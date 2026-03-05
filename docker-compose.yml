@@ -1,0 +1,103 @@
+services:
+
+  # ── SQL SERVER ───────────────────────────────────────────
+  db:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    container_name: asd_sqlserver
+    environment:
+      SA_PASSWORD: "MatKhau@123456!"
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - asd_network
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'MatKhau@123456!' -Q 'SELECT 1' -No || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'MatKhau@123456!' -Q 'SELECT 1'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ── REDIS ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: asd_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - asd_network
+
+  # ── BACKEND ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: asd_backend
+    environment:
+      DATABASE_URL: "mssql+pyodbc://sa:MatKhau%40123456%21@db:1433/ASD_Screening?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes&Encrypt=no"
+      SECRET_KEY: "asd-screen-ai-secret-key-2026"
+      ALGORITHM: "HS256"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      ENVIRONMENT: "development"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - media_files:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - asd_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── FRONTEND ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: asd_frontend
+    environment:
+      VITE_API_URL: "http://localhost:8000"
+      VITE_WS_URL: "ws://localhost:8000"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - asd_network
+
+  # ── CHATBOT ──────────────────────────────────────────────
+  chatbot:
+    build:
+      context: ./chatbot
+      dockerfile: Dockerfile
+    container_name: asd_chatbot
+    environment:
+      TELEGRAM_TOKEN: "YOUR_TELEGRAM_BOT_TOKEN"
+      API_URL: "http://backend:8000"
+      SECRET_KEY: "asd-screen-ai-secret-key-2026"
+    depends_on:
+      - backend
+    networks:
+      - asd_network
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+  redis_data:
+  media_files:
+
+networks:
+  asd_network:
+    driver: bridge
