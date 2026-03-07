@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 import useChildStore from '../store/childStore'
+import api from '../api/axios'
 
 const ROLE_LABEL = {
   admin: '👑 Quản trị viên',
@@ -14,6 +15,7 @@ export default function Dashboard() {
   const { user, logout } = useAuthStore()
   const { children, loading, fetchChildren } = useChildStore()
   const navigate = useNavigate()
+  const [startingAssessment, setStartingAssessment] = useState(null) // child.id đang tạo
 
   useEffect(() => {
     fetchChildren()
@@ -22,6 +24,25 @@ export default function Dashboard() {
   const handleLogout = () => {
     logout()
     navigate('/login')
+  }
+
+  // ─── FIX: Tạo assessment trên backend trước, rồi navigate với UUID thật ───
+  const handleStartAssessment = async (child) => {
+    setStartingAssessment(child.id)
+    try {
+      const res = await api.post('/assessments/', { child_id: child.id })
+      const assessmentId = res.data.id
+      navigate(`/assessment/${assessmentId}`, {
+        state: {
+          childName: child.full_name,
+          birthDate: child.birth_date,
+        }
+      })
+    } catch (e) {
+      alert('Không thể tạo phiên đánh giá. Vui lòng thử lại.')
+    } finally {
+      setStartingAssessment(null)
+    }
   }
 
   const stats = [
@@ -59,6 +80,14 @@ export default function Dashboard() {
           >
             Đăng xuất
           </button>
+          {user?.role === 'admin' && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="bg-purple-50 hover:bg-purple-100 text-purple-600 text-sm px-4 py-2 rounded-lg"
+            >
+              ⚙️ Admin
+            </button>
+          )}
         </div>
       </header>
 
@@ -146,10 +175,11 @@ export default function Dashboard() {
                           Xem chi tiết
                         </button>
                         <button
-                          onClick={() => navigate(`/assessment/new?child=${child.id}`)}
-                          className="text-green-600 hover:text-green-800 text-xs font-medium"
+                          onClick={() => handleStartAssessment(child)}
+                          disabled={startingAssessment === child.id}
+                          className="text-green-600 hover:text-green-800 text-xs font-medium disabled:opacity-40"
                         >
-                          Đánh giá
+                          {startingAssessment === child.id ? '⏳ Đang tạo...' : '▶ Đánh giá'}
                         </button>
                       </td>
                     </tr>

@@ -1,62 +1,60 @@
+import json
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import json
+from sqlalchemy import text
 from app.database import get_db
-from app.models.assessment import Assessment
-from app.models.child import Child
-from app.utils.deps import get_current_user
-from app.models.user import User
-from datetime import date
+from app.models import User
+from app.utils.security import get_current_user
 
-router = APIRouter()
+# Bỏ prefix ở đây vì main.py đã thêm prefix="/api/reports"
+router = APIRouter(tags=["reports"])
 
-def calc_age_months(birth_date: date) -> int:
-    today = date.today()
-    return (today.year - birth_date.year) * 12 + (today.month - birth_date.month)
 
+# ─── FIX 3: Dùng .mappings() để đọc bằng tên cột, tránh lệch index ──────────
 @router.get("/{assessment_id}")
 def get_report(
     assessment_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
-    if not assessment:
+    row = db.execute(text("""
+        SELECT
+            a.id                 AS assessment_id,
+            a.status             AS status,
+            a.risk_level         AS risk_level,
+            a.overall_risk_score AS overall_score,
+            a.report_json        AS report_json,
+            a.created_at         AS created_at,
+            a.completed_at       AS completed_at,
+            c.full_name          AS full_name,
+            c.birth_date         AS birth_date,
+            c.gender             AS gender
+        FROM assessments a
+        JOIN children c ON a.child_id = c.id
+        WHERE a.id = :id
+    """), {"id": assessment_id}).mappings().fetchone()
+
+    if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy báo cáo")
 
-    child = db.query(Child).filter(Child.id == assessment.child_id).first()
-    report = json.loads(assessment.report_json) if assessment.report_json else {}
+    # Tính tuổi tháng
+    birth  = row["birth_date"]
+    today  = date.today()
+    months = (today.year - birth.year) * 12 + (today.month - birth.month)
 
     return {
-        "assessment_id": str(assessment.id),
+        "assessment_id": str(row["assessment_id"]),
+        "status":        row["status"],
+        "risk_level":    row["risk_level"],
+        "overall_score": float(row["overall_score"]) if row["overall_score"] else None,
+        "report":        json.loads(row["report_json"]) if row["report_json"] else None,
+        "created_at":    str(row["created_at"]),
+        "completed_at":  str(row["completed_at"]) if row["completed_at"] else None,
         "child": {
-            "id": str(child.id),
-            "name": child.full_name,
-            "age_months": calc_age_months(child.birth_date),
-            "gender": child.gender
-        },
-        "status": assessment.status,
-        "risk_level": assessment.risk_level,
-        "overall_risk_score": float(assessment.overall_risk_score) if assessment.overall_risk_score else None,
-        "report": report,
-        "started_at": assessment.started_at,
-        "completed_at": assessment.completed_at
+            "full_name":  row["full_name"],
+            "birth_date": str(row["birth_date"]),
+            "gender":     row["gender"],
+            "age_months": months,
+        }
     }
-
-@router.get("/child/{child_id}/history")
-def get_child_report_history(
-    child_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    assessments = db.query(Assessment).filter(
-        Assessment.child_id == child_id,
-        Assessment.status == 'completed'
-    ).order_by(Assessment.completed_at.desc()).all()
-
-    return [{
-        "assessment_id": str(a.id),
-        "risk_level": a.risk_level,
-        "overall_risk_score": float(a.overall_risk_score) if a.overall_risk_score else None,
-        "completed_at": a.completed_at
-    } for a in assessments]

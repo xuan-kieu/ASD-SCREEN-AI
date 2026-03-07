@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, children, assessments, games, reports, messages, admin
+from app.routers import admin
 
 app = FastAPI(
     title="ASD-SCREEN AI API",
@@ -23,6 +24,7 @@ app.include_router(games.router,       prefix="/api/games",       tags=["Games"]
 app.include_router(reports.router,     prefix="/api/reports",     tags=["Reports"])
 app.include_router(messages.router,    prefix="/api/messages",    tags=["Messages"])
 app.include_router(admin.router,       prefix="/api/admin",       tags=["Admin"])
+app.include_router(admin.router)
 
 @app.get("/")
 def root():

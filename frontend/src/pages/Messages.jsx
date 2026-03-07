@@ -6,26 +6,26 @@ import useAuthStore from '../store/authStore'
 export default function Messages() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const [messages, setMessages] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [messages, setMessages]     = useState([])
+  const [loading, setLoading]       = useState(true)
   const [showCompose, setShowCompose] = useState(false)
-  const [users, setUsers] = useState([])
-  const [form, setForm] = useState({ to_user_id: '', child_id: '', content: '' })
-  const [children, setChildren] = useState([])
-  const [sending, setSending] = useState(false)
+  const [users, setUsers]           = useState([])   // ← danh sách users thật
+  const [children, setChildren]     = useState([])
+  const [form, setForm]             = useState({ to_user_id: '', child_id: '', content: '' })
+  const [sending, setSending]       = useState(false)
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
     try {
-      const [msgRes, childRes] = await Promise.all([
+      const [msgRes, childRes, userRes] = await Promise.all([
         api.get('/messages/inbox'),
-        api.get('/children/')
+        api.get('/children/'),
+        api.get('/messages/users'),   // ← load users để chọn người nhận
       ])
       setMessages(msgRes.data)
       setChildren(childRes.data)
+      setUsers(userRes.data)
     } catch (err) {
       console.error(err)
     } finally {
@@ -40,8 +40,8 @@ export default function Messages() {
     } catch (err) {}
   }
 
-  const sendMessage = async (e) => {
-    e.preventDefault()
+  const sendMessage = async () => {
+    if (!form.to_user_id || !form.content.trim()) return
     setSending(true)
     try {
       await api.post('/messages/', form)
@@ -59,6 +59,7 @@ export default function Messages() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <div className="bg-white shadow-sm px-6 py-4">
         <div className="max-w-3xl mx-auto flex justify-between items-center">
           <button onClick={() => navigate('/dashboard')} className="text-gray-500 hover:text-gray-700 text-sm">
@@ -85,52 +86,72 @@ export default function Messages() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-6 w-full max-w-md">
               <h3 className="font-bold text-gray-800 mb-4">📝 Soạn tin nhắn</h3>
-              <form onSubmit={sendMessage} className="space-y-4">
+              <div className="space-y-4">
+
+                {/* Chọn người nhận từ dropdown — không nhập tay UUID */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Chọn trẻ</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Người nhận *
+                  </label>
+                  <select
+                    value={form.to_user_id}
+                    onChange={e => setForm(p => ({ ...p, to_user_id: e.target.value }))}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"
+                  >
+                    <option value="">-- Chọn người nhận --</option>
+                    {users.map(u => (
+                      <option key={u.id} value={u.id}>
+                        {u.full_name} ({u.role})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Chọn trẻ (không bắt buộc) */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Liên quan đến trẻ (không bắt buộc)
+                  </label>
                   <select
                     value={form.child_id}
                     onChange={e => setForm(p => ({ ...p, child_id: e.target.value }))}
-                    required
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"
                   >
-                    <option value="">-- Chọn trẻ --</option>
+                    <option value="">-- Không chọn --</option>
                     {children.map(c => (
                       <option key={c.id} value={c.id}>{c.full_name}</option>
                     ))}
                   </select>
                 </div>
+
+                {/* Nội dung */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">ID người nhận</label>
-                  <input
-                    value={form.to_user_id}
-                    onChange={e => setForm(p => ({ ...p, to_user_id: e.target.value }))}
-                    required
-                    placeholder="UUID của người nhận..."
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Nội dung</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Nội dung *</label>
                   <textarea
                     value={form.content}
                     onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
-                    required rows={4}
+                    rows={4}
                     placeholder="Nhập nội dung tin nhắn..."
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm resize-none"
                   />
                 </div>
+
                 <div className="flex gap-3">
-                  <button type="button" onClick={() => setShowCompose(false)}
-                    className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm">
+                  <button
+                    onClick={() => { setShowCompose(false); setForm({ to_user_id: '', child_id: '', content: '' }) }}
+                    className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm"
+                  >
                     Hủy
                   </button>
-                  <button type="submit" disabled={sending}
-                    className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm">
+                  <button
+                    onClick={sendMessage}
+                    disabled={sending || !form.to_user_id || !form.content.trim()}
+                    className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm disabled:opacity-40"
+                  >
                     {sending ? '⏳ Đang gửi...' : '📤 Gửi'}
                   </button>
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         )}
@@ -154,9 +175,16 @@ export default function Messages() {
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <span className={`text-sm font-medium ${msg.is_read ? 'text-gray-600' : 'text-indigo-700'}`}>
-                    {msg.is_read ? '📨' : '📬'} Tin nhắn mới
-                  </span>
+                  <div>
+                    <span className={`text-sm font-medium ${msg.is_read ? 'text-gray-600' : 'text-indigo-700'}`}>
+                      {msg.is_read ? '📨' : '📬'} {msg.from_name || 'Ẩn danh'}
+                    </span>
+                    {msg.child_name && (
+                      <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                        👶 {msg.child_name}
+                      </span>
+                    )}
+                  </div>
                   <span className="text-xs text-gray-400">
                     {new Date(msg.created_at).toLocaleDateString('vi-VN')}
                   </span>
@@ -164,7 +192,7 @@ export default function Messages() {
                 <p className="text-sm text-gray-700 line-clamp-2">{msg.content}</p>
                 {!msg.is_read && (
                   <span className="inline-block mt-2 text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">
-                    Chưa đọc
+                    Chưa đọc • Click để đánh dấu đã đọc
                   </span>
                 )}
               </div>

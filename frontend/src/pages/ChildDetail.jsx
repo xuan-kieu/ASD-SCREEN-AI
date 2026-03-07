@@ -31,10 +31,16 @@ export default function ChildDetail() {
     }
   }
 
+  // ← ĐÃ SỬA: truyền childName + birthDate qua navigate state
   const startAssessment = async () => {
     try {
       const res = await api.post('/assessments/', { child_id: id })
-      navigate(`/assessment/${res.data.id}`)
+      navigate(`/assessment/${res.data.id}`, {
+        state: {
+          childName: child?.full_name,
+          birthDate: child?.birth_date
+        }
+      })
     } catch (err) {
       alert('Không thể tạo phiên đánh giá')
     }
@@ -42,9 +48,9 @@ export default function ChildDetail() {
 
   const getRiskBadge = (level) => {
     const map = {
-      'THẤP':      'bg-green-100 text-green-700',
+      'THẤP':       'bg-green-100 text-green-700',
       'TRUNG BÌNH': 'bg-yellow-100 text-yellow-700',
-      'CAO':       'bg-orange-100 text-orange-700',
+      'CAO':        'bg-orange-100 text-orange-700',
       'RẤT CAO':   'bg-red-100 text-red-700',
     }
     return map[level] || 'bg-gray-100 text-gray-600'
@@ -203,9 +209,7 @@ function AgeRangeBar({ ageMonths }) {
       {ranges.map(r => (
         <div key={r.label} className="flex-1 text-center">
           <div className={`h-2 rounded-full mb-1 ${
-            ageMonths >= r.min && ageMonths < r.max
-              ? r.color
-              : 'bg-gray-200'
+            ageMonths >= r.min && ageMonths < r.max ? r.color : 'bg-gray-200'
           }`} />
           <span className={`text-xs ${
             ageMonths >= r.min && ageMonths < r.max
