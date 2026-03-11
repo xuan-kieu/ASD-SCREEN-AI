@@ -2,19 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List
-from datetime import datetime, date
+from datetime import date
 import uuid
 import json
 from app.database import get_db
 from app.models.assessment import Assessment
 from app.models.child import Child
 from app.schemas import AssessmentCreate, AssessmentResponse
-from app.utils.deps import get_current_user
+from app.utils.security import get_current_user
 from app.models.user import User
 from app.services.ai.scoring_engine import calculate_developmental_score
 from app.services.report_service import generate_report
 
 router = APIRouter()
+
 
 def assessment_to_dict(a):
     return {
@@ -75,45 +76,6 @@ def get_assessment(
     return assessment_to_dict(assessment)
 
 
-@router.post("/{assessment_id}/submit")
-def submit_assessment(
-    assessment_id: str,
-    scores: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
-    if not assessment:
-        raise HTTPException(status_code=404, detail="Không tìm thấy phiên đánh giá")
-
-    child = db.query(Child).filter(Child.id == assessment.child_id).first()
-    today = date.today()
-    age_months = (today.year - child.birth_date.year) * 12 + \
-                 (today.month - child.birth_date.month)
-
-    scoring_result = calculate_developmental_score(age_months, scores)
-    report = generate_report(child.full_name, age_months, assessment_id, scoring_result)
-
-    db.execute(text("""
-        UPDATE assessments
-        SET status = 'completed',
-            completed_at = GETDATE(),
-            overall_risk_score = :score,
-            risk_level = :risk_level,
-            report_json = :report_json
-        WHERE id = :id
-    """), {
-        "id": assessment_id,
-        "score": scoring_result["weighted_score"],
-        "risk_level": scoring_result["risk_level"],
-        "report_json": json.dumps(report, ensure_ascii=False, default=str)
-    })
-    db.commit()
-
-    return {"message": "Hoàn thành đánh giá", "risk_level": scoring_result["risk_level"], "report": report}
-
-
-# ─── FIX 1: Thêm sequence_order vào INSERT ───────────────────────────────────
 @router.post("/{assessment_id}/features")
 def save_features(
     assessment_id: str,
@@ -128,7 +90,6 @@ def save_features(
     if not features:
         return {"saved": 0}
 
-    # Tính sequence_order tiếp theo
     seq_result = db.execute(text("""
         SELECT COALESCE(MAX(sequence_order), 0) + 1
         FROM game_sessions WHERE assessment_id = :aid
@@ -152,7 +113,6 @@ def save_features(
     return {"saved": len(features), "session_id": session_id}
 
 
-# ─── FIX 2: Chỉ giữ 1 định nghĩa complete (bản đầy đủ có scoring) ────────────
 @router.patch("/{assessment_id}/complete")
 def complete_assessment(
     assessment_id: str,
@@ -166,7 +126,6 @@ def complete_assessment(
 
     child = db.query(Child).filter(Child.id == assessment.child_id).first()
 
-    # Lấy tất cả features từ game_sessions
     sessions = db.execute(text("""
         SELECT game_code, raw_features FROM game_sessions
         WHERE assessment_id = :id
@@ -181,7 +140,6 @@ def complete_assessment(
             game_features[code] = []
         game_features[code].extend(features)
 
-    # Tính tuổi tháng
     today = date.today()
     age_months = (today.year - child.birth_date.year) * 12 + \
                  (today.month - child.birth_date.month)

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
-import useAuthStore from '../store/authStore'
 
 export default function Messages() {
   const navigate = useNavigate()
-  const { user } = useAuthStore()
-  const [messages, setMessages]     = useState([])
+  const [tab, setTab]               = useState('inbox')   // 'inbox' | 'sent'
+  const [inbox, setInbox]           = useState([])
+  const [sent, setSent]             = useState([])
   const [loading, setLoading]       = useState(true)
   const [showCompose, setShowCompose] = useState(false)
-  const [users, setUsers]           = useState([])   // ← danh sách users thật
+  const [users, setUsers]           = useState([])
   const [children, setChildren]     = useState([])
   const [form, setForm]             = useState({ to_user_id: '', child_id: '', content: '' })
   const [sending, setSending]       = useState(false)
@@ -17,13 +17,16 @@ export default function Messages() {
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
+    setLoading(true)
     try {
-      const [msgRes, childRes, userRes] = await Promise.all([
+      const [inboxRes, sentRes, childRes, userRes] = await Promise.all([
         api.get('/messages/inbox'),
+        api.get('/messages/sent'),
         api.get('/children/'),
-        api.get('/messages/users'),   // ← load users để chọn người nhận
+        api.get('/messages/users'),
       ])
-      setMessages(msgRes.data)
+      setInbox(inboxRes.data)
+      setSent(sentRes.data)
       setChildren(childRes.data)
       setUsers(userRes.data)
     } catch (err) {
@@ -36,7 +39,7 @@ export default function Messages() {
   const markRead = async (id) => {
     try {
       await api.patch(`/messages/${id}/read`)
-      setMessages(prev => prev.map(m => m.id === id ? { ...m, is_read: true } : m))
+      setInbox(prev => prev.map(m => m.id === id ? { ...m, is_read: true } : m))
     } catch (err) {}
   }
 
@@ -55,7 +58,8 @@ export default function Messages() {
     }
   }
 
-  const unreadCount = messages.filter(m => !m.is_read).length
+  const unreadCount = inbox.filter(m => !m.is_read).length
+  const messages    = tab === 'inbox' ? inbox : sent
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -66,8 +70,9 @@ export default function Messages() {
             ← Dashboard
           </button>
           <h1 className="font-bold text-gray-800">
-            💬 Tin nhắn {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-1">{unreadCount}</span>
+            💬 Tin nhắn
+            {unreadCount > 0 && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-2">{unreadCount}</span>
             )}
           </h1>
           <button
@@ -79,6 +84,37 @@ export default function Messages() {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="bg-white border-b">
+        <div className="max-w-3xl mx-auto px-6 flex gap-0">
+          {[
+            { key: 'inbox', label: '📥 Hộp thư đến', count: unreadCount },
+            { key: 'sent',  label: '📤 Đã gửi',       count: sent.length },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.key
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+              {t.count > 0 && (
+                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
+                  t.key === 'inbox' && unreadCount > 0
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {t.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="max-w-3xl mx-auto px-6 py-6">
 
         {/* Compose Modal */}
@@ -87,12 +123,8 @@ export default function Messages() {
             <div className="bg-white rounded-2xl p-6 w-full max-w-md">
               <h3 className="font-bold text-gray-800 mb-4">📝 Soạn tin nhắn</h3>
               <div className="space-y-4">
-
-                {/* Chọn người nhận từ dropdown — không nhập tay UUID */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Người nhận *
-                  </label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Người nhận *</label>
                   <select
                     value={form.to_user_id}
                     onChange={e => setForm(p => ({ ...p, to_user_id: e.target.value }))}
@@ -106,8 +138,6 @@ export default function Messages() {
                     ))}
                   </select>
                 </div>
-
-                {/* Chọn trẻ (không bắt buộc) */}
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
                     Liên quan đến trẻ (không bắt buộc)
@@ -123,8 +153,6 @@ export default function Messages() {
                     ))}
                   </select>
                 </div>
-
-                {/* Nội dung */}
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Nội dung *</label>
                   <textarea
@@ -135,7 +163,6 @@ export default function Messages() {
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm resize-none"
                   />
                 </div>
-
                 <div className="flex gap-3">
                   <button
                     onClick={() => { setShowCompose(false); setForm({ to_user_id: '', child_id: '', content: '' }) }}
@@ -162,37 +189,52 @@ export default function Messages() {
         ) : messages.length === 0 ? (
           <div className="text-center py-12 text-gray-400">
             <div className="text-5xl mb-3">💬</div>
-            <p>Chưa có tin nhắn nào</p>
+            <p>{tab === 'inbox' ? 'Chưa có tin nhắn nào' : 'Chưa gửi tin nhắn nào'}</p>
           </div>
         ) : (
           <div className="space-y-3">
             {messages.map(msg => (
               <div
                 key={msg.id}
-                onClick={() => !msg.is_read && markRead(msg.id)}
-                className={`bg-white rounded-xl p-4 shadow-sm cursor-pointer border transition-colors ${
-                  msg.is_read ? 'border-gray-100' : 'border-indigo-200 bg-indigo-50'
+                onClick={() => tab === 'inbox' && !msg.is_read && markRead(msg.id)}
+                className={`bg-white rounded-xl p-4 shadow-sm border transition-colors ${
+                  tab === 'inbox' && !msg.is_read
+                    ? 'border-indigo-200 bg-indigo-50 cursor-pointer'
+                    : 'border-gray-100'
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <span className={`text-sm font-medium ${msg.is_read ? 'text-gray-600' : 'text-indigo-700'}`}>
-                      {msg.is_read ? '📨' : '📬'} {msg.from_name || 'Ẩn danh'}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-sm font-medium ${
+                      tab === 'inbox' && !msg.is_read ? 'text-indigo-700' : 'text-gray-600'
+                    }`}>
+                      {tab === 'inbox'
+                        ? `${msg.is_read ? '📨' : '📬'} ${msg.from_name || 'Ẩn danh'}`
+                        : `📤 Gửi đến: ${msg.to_name || 'Ẩn danh'}`
+                      }
                     </span>
                     {msg.child_name && (
-                      <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                      <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
                         👶 {msg.child_name}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(msg.created_at).toLocaleDateString('vi-VN')}
+                  <span className="text-xs text-gray-400 shrink-0 ml-2">
+                    {new Date(msg.created_at).toLocaleDateString('vi-VN', {
+                      day: '2-digit', month: '2-digit', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
+                    })}
                   </span>
                 </div>
                 <p className="text-sm text-gray-700 line-clamp-2">{msg.content}</p>
-                {!msg.is_read && (
+                {tab === 'inbox' && !msg.is_read && (
                   <span className="inline-block mt-2 text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full">
                     Chưa đọc • Click để đánh dấu đã đọc
+                  </span>
+                )}
+                {tab === 'sent' && msg.is_read && (
+                  <span className="inline-block mt-2 text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">
+                    ✓ Đã đọc
                   </span>
                 )}
               </div>

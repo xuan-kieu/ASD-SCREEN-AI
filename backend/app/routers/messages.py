@@ -45,6 +45,39 @@ def get_inbox(
     ]
 
 
+@router.get("/sent")
+def get_sent(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    rows = db.execute(text("""
+        SELECT
+            m.id, m.content, m.is_read, m.created_at, m.read_at,
+            m.child_id,
+            u.full_name AS to_name,
+            c.full_name AS child_name
+        FROM messages m
+        LEFT JOIN users u    ON m.to_user_id = u.id
+        LEFT JOIN children c ON m.child_id = c.id
+        WHERE m.from_user_id = :uid
+        ORDER BY m.created_at DESC
+    """), {"uid": str(current_user.id)}).mappings().fetchall()
+
+    return [
+        {
+            "id":         str(r["id"]),
+            "content":    r["content"],
+            "is_read":    r["is_read"],
+            "created_at": str(r["created_at"]),
+            "read_at":    str(r["read_at"]) if r["read_at"] else None,
+            "child_id":   str(r["child_id"]) if r["child_id"] else None,
+            "child_name": r["child_name"],
+            "to_name":    r["to_name"] or "Ẩn danh",
+        }
+        for r in rows
+    ]
+
+
 @router.post("/")
 def send_message(
     payload: dict,

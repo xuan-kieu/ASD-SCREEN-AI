@@ -317,3 +317,4 @@ INSERT INTO users (username, password_hash, email, phone, full_name, role) VALUE
  'admin@asdscreen.com', '0901234567',
  N'Quản trị viên hệ thống', 'admin');
 GO
+
