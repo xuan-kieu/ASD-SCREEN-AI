@@ -11,10 +11,14 @@ build/
 # Môi trường
 .env
 *.env
-
+chatbot/.env
+backend/.env
 # Docker volumes
 media/
 
 # IDE
 .vscode/
 .idea/
+
+# SSL certificates
+nginx/ssl/
