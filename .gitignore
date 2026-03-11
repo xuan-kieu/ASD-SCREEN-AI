@@ -22,3 +22,4 @@ media/
 
 # SSL certificates
 nginx/ssl/
+.env.production
