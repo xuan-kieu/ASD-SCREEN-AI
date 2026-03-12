@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import api from '../api/axios'
 import CameraAI from '../components/CameraAI'
+import DeviceCheck from '../components/DeviceCheck'
 
 const gameComponents = {
   'GATEWAY_BALLOON':  lazy(() => import('../components/games/GW_Balloon')),
@@ -53,7 +54,7 @@ function getAgeGroup(months) {
   return '36-60'
 }
 
-const PHASE = { SETUP: 'setup', GATEWAY: 'gateway', GATEWAY_RESULT: 'gateway_result', MAIN_GAMES: 'main_games', DONE: 'done' }
+const PHASE = { SETUP: 'setup', DEVICE_CHECK: 'device_check', GATEWAY: 'gateway', GATEWAY_RESULT: 'gateway_result', MAIN_GAMES: 'main_games', DONE: 'done' }
 
 export default function Assessment() {
   const { id: assessmentId } = useParams()
@@ -201,8 +202,8 @@ export default function Assessment() {
     setAgeMonths(months)
     setAgeGroup(group)
     ageGroupRef.current = group
-    setPhase(PHASE.GATEWAY)
-    phaseRef.current = PHASE.GATEWAY
+    setPhase(PHASE.DEVICE_CHECK)
+    phaseRef.current = PHASE.DEVICE_CHECK
     setGatewayIdx(0)
     gatewayIdxRef.current = 0
   }
@@ -274,6 +275,25 @@ export default function Assessment() {
           ▶ Bắt đầu đánh giá
         </button>
       </div>
+    </div>
+  )
+
+  // ─── PHASE: DEVICE CHECK ────────────────────────────────────
+  if (phase === PHASE.DEVICE_CHECK) return (
+    <div style={S.root}>
+      <DeviceCheck
+        childName={childName}
+        onPass={(cameraAvailable) => {
+          setCameraEnabled(cameraAvailable)
+          setPhase(PHASE.GATEWAY)
+          phaseRef.current = PHASE.GATEWAY
+        }}
+        onSkip={() => {
+          setCameraEnabled(false)
+          setPhase(PHASE.GATEWAY)
+          phaseRef.current = PHASE.GATEWAY
+        }}
+      />
     </div>
   )
 
