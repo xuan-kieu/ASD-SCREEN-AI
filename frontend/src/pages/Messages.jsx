@@ -1,22 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../api/axios'
+import useAuthStore from '../store/authStore'
 
 export default function Messages() {
-  const navigate = useNavigate()
-  const [tab, setTab]               = useState('inbox')   // 'inbox' | 'sent'
-  const [inbox, setInbox]           = useState([])
-  const [sent, setSent]             = useState([])
-  const [loading, setLoading]       = useState(true)
+  const navigate  = useNavigate()
+  const { token } = useAuthStore()
+
+  const [tab, setTab]                 = useState('inbox')
+  const [inbox, setInbox]             = useState([])
+  const [sent, setSent]               = useState([])
+  const [loading, setLoading]         = useState(true)
   const [showCompose, setShowCompose] = useState(false)
-  const [users, setUsers]           = useState([])
-  const [children, setChildren]     = useState([])
-  const [form, setForm]             = useState({ to_user_id: '', child_id: '', content: '' })
-  const [sending, setSending]       = useState(false)
+  const [users, setUsers]             = useState([])
+  const [children, setChildren]       = useState([])
+  const [form, setForm]               = useState({ to_user_id: '', child_id: '', content: '' })
+  const [sending, setSending]         = useState(false)
+  const [wsStatus, setWsStatus]       = useState('connecting')
+  const [newMsgFlash, setNewMsgFlash] = useState(false)
 
-  useEffect(() => { loadData() }, [])
+  const wsRef          = useRef(null)
+  const reconnectTimer = useRef(null)
+  const mountedRef     = useRef(true)
 
-  const loadData = async () => {
+  // ── Load dữ liệu ──────────────────────────────────────────────────────
+  const loadData = useCallback(async () => {
     setLoading(true)
     try {
       const [inboxRes, sentRes, childRes, userRes] = await Promise.all([
@@ -25,6 +33,7 @@ export default function Messages() {
         api.get('/children/'),
         api.get('/messages/users'),
       ])
+      if (!mountedRef.current) return
       setInbox(inboxRes.data)
       setSent(sentRes.data)
       setChildren(childRes.data)
@@ -32,15 +41,82 @@ export default function Messages() {
     } catch (err) {
       console.error(err)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
-  }
+  }, [])
 
+  // ── WebSocket connect ─────────────────────────────────────────────────
+  const connectWS = useCallback(() => {
+    if (!token || !mountedRef.current) return
+
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const wsUrl      = `${wsProtocol}://${window.location.host}/api/ws/messages?token=${token}`
+    const ws         = new WebSocket(wsUrl)
+    wsRef.current    = ws
+
+    ws.onopen = () => {
+      if (!mountedRef.current) return
+      setWsStatus('connected')
+    }
+
+    ws.onmessage = (event) => {
+      if (!mountedRef.current) return
+      try {
+        const msg = JSON.parse(event.data)
+
+        if (msg.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }))
+          return
+        }
+
+        if (msg.type === 'new_message') {
+          setInbox(prev => [msg.data, ...prev])
+          setNewMsgFlash(true)
+          setTimeout(() => setNewMsgFlash(false), 3000)
+        }
+
+        if (msg.type === 'message_read') {
+          setSent(prev => prev.map(m =>
+            m.id === msg.data.message_id ? { ...m, is_read: true } : m
+          ))
+        }
+      } catch (e) {}
+    }
+
+    ws.onclose = (event) => {
+      if (!mountedRef.current) return
+      setWsStatus('disconnected')
+      // Auto reconnect sau 5 giây nếu không phải đóng chủ động
+      if (event.code !== 1000) {
+        reconnectTimer.current = setTimeout(() => {
+          if (mountedRef.current) {
+            setWsStatus('connecting')
+            connectWS()
+          }
+        }, 5000)
+      }
+    }
+
+    ws.onerror = () => setWsStatus('disconnected')
+  }, [token])
+
+  useEffect(() => {
+    mountedRef.current = true
+    loadData()
+    connectWS()
+    return () => {
+      mountedRef.current = false
+      clearTimeout(reconnectTimer.current)
+      wsRef.current?.close(1000)
+    }
+  }, [loadData, connectWS])
+
+  // ── Handlers ──────────────────────────────────────────────────────────
   const markRead = async (id) => {
     try {
       await api.patch(`/messages/${id}/read`)
       setInbox(prev => prev.map(m => m.id === id ? { ...m, is_read: true } : m))
-    } catch (err) {}
+    } catch {}
   }
 
   const sendMessage = async () => {
@@ -50,8 +126,9 @@ export default function Messages() {
       await api.post('/messages/', form)
       setShowCompose(false)
       setForm({ to_user_id: '', child_id: '', content: '' })
-      loadData()
-    } catch (err) {
+      const sentRes = await api.get('/messages/sent')
+      setSent(sentRes.data)
+    } catch {
       alert('Không thể gửi tin nhắn')
     } finally {
       setSending(false)
@@ -61,6 +138,12 @@ export default function Messages() {
   const unreadCount = inbox.filter(m => !m.is_read).length
   const messages    = tab === 'inbox' ? inbox : sent
 
+  const wsInfo = {
+    connecting:   { color: '#f59e0b', text: '⏳ Đang kết nối' },
+    connected:    { color: '#22c55e', text: '🟢 Realtime' },
+    disconnected: { color: '#ef4444', text: '🔴 Mất kết nối' },
+  }[wsStatus]
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -69,12 +152,24 @@ export default function Messages() {
           <button onClick={() => navigate('/dashboard')} className="text-gray-500 hover:text-gray-700 text-sm">
             ← Dashboard
           </button>
-          <h1 className="font-bold text-gray-800">
-            💬 Tin nhắn
-            {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-2">{unreadCount}</span>
-            )}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-bold text-gray-800">
+              💬 Tin nhắn
+              {unreadCount > 0 && (
+                <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full ml-2">
+                  {unreadCount}
+                </span>
+              )}
+            </h1>
+            <span style={{
+              fontSize: 11, color: wsInfo.color,
+              border: `1px solid ${wsInfo.color}`,
+              borderRadius: 20, padding: '2px 8px',
+              background: '#f8fafc'
+            }}>
+              {wsInfo.text}
+            </span>
+          </div>
           <button
             onClick={() => setShowCompose(true)}
             className="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg"
@@ -84,22 +179,30 @@ export default function Messages() {
         </div>
       </div>
 
+      {/* Flash tin mới */}
+      {newMsgFlash && (
+        <div style={{
+          background: '#22c55e', color: '#fff',
+          textAlign: 'center', padding: '8px',
+          fontSize: 14, fontWeight: 600,
+        }}>
+          📬 Bạn có tin nhắn mới!
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="bg-white border-b">
-        <div className="max-w-3xl mx-auto px-6 flex gap-0">
+        <div className="max-w-3xl mx-auto px-6 flex">
           {[
             { key: 'inbox', label: '📥 Hộp thư đến', count: unreadCount },
             { key: 'sent',  label: '📤 Đã gửi',       count: sent.length },
           ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
+            <button key={t.key} onClick={() => setTab(t.key)}
               className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.key
                   ? 'border-indigo-600 text-indigo-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
+              }`}>
               {t.label}
               {t.count > 0 && (
                 <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full ${
@@ -125,28 +228,20 @@ export default function Messages() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Người nhận *</label>
-                  <select
-                    value={form.to_user_id}
+                  <select value={form.to_user_id}
                     onChange={e => setForm(p => ({ ...p, to_user_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"
-                  >
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
                     <option value="">-- Chọn người nhận --</option>
                     {users.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.full_name} ({u.role})
-                      </option>
+                      <option key={u.id} value={u.id}>{u.full_name} ({u.role})</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Liên quan đến trẻ (không bắt buộc)
-                  </label>
-                  <select
-                    value={form.child_id}
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Liên quan đến trẻ (không bắt buộc)</label>
+                  <select value={form.child_id}
                     onChange={e => setForm(p => ({ ...p, child_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm"
-                  >
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
                     <option value="">-- Không chọn --</option>
                     {children.map(c => (
                       <option key={c.id} value={c.id}>{c.full_name}</option>
@@ -155,26 +250,19 @@ export default function Messages() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Nội dung *</label>
-                  <textarea
-                    value={form.content}
+                  <textarea value={form.content}
                     onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
-                    rows={4}
-                    placeholder="Nhập nội dung tin nhắn..."
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm resize-none"
-                  />
+                    rows={4} placeholder="Nhập nội dung tin nhắn..."
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm resize-none" />
                 </div>
                 <div className="flex gap-3">
-                  <button
-                    onClick={() => { setShowCompose(false); setForm({ to_user_id: '', child_id: '', content: '' }) }}
-                    className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm"
-                  >
+                  <button onClick={() => { setShowCompose(false); setForm({ to_user_id: '', child_id: '', content: '' }) }}
+                    className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm">
                     Hủy
                   </button>
-                  <button
-                    onClick={sendMessage}
+                  <button onClick={sendMessage}
                     disabled={sending || !form.to_user_id || !form.content.trim()}
-                    className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm disabled:opacity-40"
-                  >
+                    className="flex-1 bg-indigo-600 text-white py-2.5 rounded-xl text-sm disabled:opacity-40">
                     {sending ? '⏳ Đang gửi...' : '📤 Gửi'}
                   </button>
                 </div>
@@ -194,15 +282,13 @@ export default function Messages() {
         ) : (
           <div className="space-y-3">
             {messages.map(msg => (
-              <div
-                key={msg.id}
+              <div key={msg.id}
                 onClick={() => tab === 'inbox' && !msg.is_read && markRead(msg.id)}
-                className={`bg-white rounded-xl p-4 shadow-sm border transition-colors ${
+                className={`bg-white rounded-xl p-4 shadow-sm border transition-all duration-300 ${
                   tab === 'inbox' && !msg.is_read
-                    ? 'border-indigo-200 bg-indigo-50 cursor-pointer'
+                    ? 'border-indigo-200 bg-indigo-50 cursor-pointer hover:shadow-md'
                     : 'border-gray-100'
-                }`}
-              >
+                }`}>
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-sm font-medium ${
@@ -210,8 +296,7 @@ export default function Messages() {
                     }`}>
                       {tab === 'inbox'
                         ? `${msg.is_read ? '📨' : '📬'} ${msg.from_name || 'Ẩn danh'}`
-                        : `📤 Gửi đến: ${msg.to_name || 'Ẩn danh'}`
-                      }
+                        : `📤 Gửi đến: ${msg.to_name || 'Ẩn danh'}`}
                     </span>
                     {msg.child_name && (
                       <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">

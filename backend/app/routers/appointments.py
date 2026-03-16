@@ -10,7 +10,7 @@ from typing import Optional, List
 import uuid, json
 from datetime import datetime, date
 
-router = APIRouter(prefix="/appointments", tags=["appointments"])
+router = APIRouter(tags=["Appointments"])
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
