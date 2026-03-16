@@ -93,6 +93,23 @@ services:
       - asd_network
     restart: unless-stopped
 
+# ── NGINX ────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: asd_nginx
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - asd_network
+    restart: unless-stopped
+    
 volumes:
   sqlserver_data:
   redis_data:

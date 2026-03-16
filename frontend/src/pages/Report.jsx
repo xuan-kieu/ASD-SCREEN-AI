@@ -227,12 +227,32 @@ export default function Report() {
         {Object.keys(domains).length > 0 && (
           <div style={S.card}>
             <h3 style={S.sectionTitle}>🔍 Phân tích theo lĩnh vực</h3>
+            {/* Percentile tổng hợp */}
+            {report?.executive_summary?.overall_percentile != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', background: '#0f172a', borderRadius: 10, marginBottom: 14, border: '1px solid #1e293b' }}>
+                <span style={{ fontSize: 20 }}>📊</span>
+                <div>
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>Percentile tổng hợp: </span>
+                  <span style={{ color: '#60a5fa', fontWeight: 700, fontSize: 15 }}>
+                    P{report.executive_summary.overall_percentile}
+                  </span>
+                  <span style={{ color: '#64748b', fontSize: 12 }}> — {report.executive_summary.percentile_label || ''}</span>
+                </div>
+                <div style={{ flex: 1, height: 6, background: '#334155', borderRadius: 3 }}>
+                  <div style={{ height: '100%', width: `${report.executive_summary.overall_percentile}%`, background: '#3b82f6', borderRadius: 3 }} />
+                </div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {Object.entries(domains).map(([domain, score]) => {
-                const cfg   = DOMAIN_LABELS[domain] || { label: domain, icon: '📊' }
-                const info  = interp[domain] || {}
-                const pct   = Math.round(score)
-                const color = pct >= 75 ? '#22c55e' : pct >= 50 ? '#eab308' : '#ef4444'
+                const cfg    = DOMAIN_LABELS[domain] || { label: domain, icon: '📊' }
+                const info   = interp[domain] || {}
+                const pct    = Math.round(score)
+                const color  = pct >= 75 ? '#22c55e' : pct >= 50 ? '#eab308' : '#ef4444'
+                const zdata  = report?.zscore_analysis?.[domain]
+                const zPct   = zdata?.percentile
+                const zLabel = zdata?.pct_label
+                const z      = zdata?.zscore
                 return (
                   <div key={domain} style={{ background: '#0f172a', borderRadius: 12, padding: 16, border: '1px solid #1e293b' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -242,6 +262,16 @@ export default function Report() {
                     <div style={{ height: 6, background: '#334155', borderRadius: 3, marginBottom: 8 }}>
                       <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3 }} />
                     </div>
+                    {zPct != null && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <span style={{ color: '#475569', fontSize: 11 }}>
+                          Z = {z > 0 ? '+' : ''}{z} • P{zPct}
+                        </span>
+                        <span style={{ fontSize: 11, color: zPct >= 50 ? '#22c55e' : zPct >= 25 ? '#eab308' : '#ef4444', fontWeight: 600 }}>
+                          {zLabel}
+                        </span>
+                      </div>
+                    )}
                     <div style={{ color: '#64748b', fontSize: 12 }}>{info.note || ''}</div>
                   </div>
                 )

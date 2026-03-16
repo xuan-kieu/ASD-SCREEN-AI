@@ -94,6 +94,10 @@ export default function Dashboard() {
             className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-sm px-4 py-2 rounded-lg transition-colors">
             💬 Tin nhắn
           </button>
+          <button onClick={() => navigate('/appointments')}
+            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-sm px-4 py-2 rounded-lg transition-colors">
+            📅 Lịch hẹn
+          </button>
           {user?.role === 'admin' && (
             <button onClick={() => navigate('/admin')}
               className="bg-purple-50 hover:bg-purple-100 text-purple-600 text-sm px-4 py-2 rounded-lg">

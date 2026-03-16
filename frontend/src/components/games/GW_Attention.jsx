@@ -11,29 +11,28 @@ export default function GW_Attention({
   gameDuration = 60,
 }) {
   const [currentChar, setCurrentChar] = useState('🐶')
-  const [score, setScore] = useState(0)
-  const [attempts, setAttempts] = useState(0)
-  const [lastCallTime, setLastCallTime] = useState(null)
-  const [responded, setResponded] = useState(false)
-  const [message, setMessage] = useState('👂 Nghe gọi tên và quay lại nhé!')
+  const [score, setScore]             = useState(0)
+  const [phase, setPhase]             = useState('idle') // idle | calling | waiting | responded
+  const [message, setMessage]         = useState(`👂 Bấm 🔊 để gọi tên ${childName}!`)
+  const [callCount, setCallCount]     = useState(0)
 
-  const gameCompletedRef = useRef(false)
-  const lastRecordTimeRef = useRef(0)
-  const animationRef = useRef(0)
-  const scoreRef = useRef(0)
-  const respondedRef = useRef(false)
-  const lastCallTimeRef = useRef(null)
-  const attemptsRef = useRef(0)
+  const gameCompletedRef    = useRef(false)
+  const lastRecordTimeRef   = useRef(0)
+  const animationRef        = useRef(0)
+  const scoreRef            = useRef(0)
+  const phaseRef            = useRef('idle')
+  const lastCallTimeRef     = useRef(null)
+  const callCountRef        = useRef(0)
+  // Cooldown để tránh AI detect liên tục gây phản hồi ngay lập tức
+  const responseCooldownRef = useRef(0)
 
-  useEffect(() => { respondedRef.current = responded }, [responded])
-  useEffect(() => { lastCallTimeRef.current = lastCallTime }, [lastCallTime])
-  useEffect(() => { attemptsRef.current = attempts }, [attempts])
+  useEffect(() => { phaseRef.current = phase }, [phase])
 
-  // Fallback: hết giờ → gọi onScore với điểm hiện tại
+  // Fallback hết giờ
   useEffect(() => {
     if (timeElapsed >= gameDuration && !gameCompletedRef.current) {
       gameCompletedRef.current = true
-      onScore?.(scoreRef.current * 30)
+      onScore?.(Math.min(100, scoreRef.current * 30))
     }
   }, [timeElapsed, gameDuration, onScore])
 
@@ -41,158 +40,177 @@ export default function GW_Attention({
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel()
       const msg = new SpeechSynthesisUtterance(text)
-      msg.lang = 'vi-VN'
-      msg.rate = 0.9
+      msg.lang  = 'vi-VN'
+      msg.rate  = 0.85
       window.speechSynthesis.speak(msg)
     }
   }
 
+  // Gọi tên — chỉ khi bấm nút, không tự động
   const callName = useCallback(() => {
-    if (respondedRef.current || gameCompletedRef.current) return
+    if (gameCompletedRef.current || phaseRef.current === 'waiting') return
     speak(`${childName} ơi!`)
     const now = Date.now()
-    setLastCallTime(now)
-    lastCallTimeRef.current = now
-    setResponded(false)
-    respondedRef.current = false
-    setMessage(`📢 Gọi ${childName}...`)
-    setAttempts(prev => { attemptsRef.current = prev + 1; return prev + 1 })
+    lastCallTimeRef.current   = now
+    responseCooldownRef.current = now + 1500 // Cooldown 1.5s — tránh AI phản hồi ngay
+    callCountRef.current += 1
+    setCallCount(callCountRef.current)
+    setPhase('waiting')
+    phaseRef.current = 'waiting'
+    setMessage(`🔊 Đang gọi "${childName}"... Bé có quay lại không?`)
   }, [childName])
 
-  // Nút thủ công: giám sát viên xác nhận bé có/không phản hồi
-  const handleManualResponse = (didRespond) => {
-    if (respondedRef.current || gameCompletedRef.current || !lastCallTimeRef.current) return
-    const reactionMs = Date.now() - lastCallTimeRef.current
-    setResponded(true)
-    respondedRef.current = true
+  // Xử lý phản hồi
+  const handleResponse = useCallback((didRespond, reactionMs = null) => {
+    if (phaseRef.current !== 'waiting' || gameCompletedRef.current) return
+
+    const rt = reactionMs ?? (lastCallTimeRef.current ? Date.now() - lastCallTimeRef.current : 0)
+
+    setPhase('responded')
+    phaseRef.current = 'responded'
 
     if (didRespond) {
       scoreRef.current += 1
       setScore(scoreRef.current)
-      setMessage(`🎉 Bé phản ứng! (${reactionMs}ms)`)
+      setMessage(`🎉 Bé phản hồi! (${rt}ms)`)
       onFeatureCapture?.({
-        timestamp: Date.now(),
+        timestamp:        Date.now(),
         isLookingAtTarget: true,
-        responseLatency: reactionMs,
-        callAttempt: attemptsRef.current,
-        manualInput: true,
+        responseLatency:  rt,
+        callAttempt:      callCountRef.current,
       })
-
       if (scoreRef.current >= 3 && !gameCompletedRef.current) {
         gameCompletedRef.current = true
-        setTimeout(() => onScore?.(scoreRef.current * 30), 1000)
+        setTimeout(() => onScore?.(Math.min(100, scoreRef.current * 30)), 1000)
         return
       }
     } else {
       setMessage('😔 Bé chưa phản hồi lần này')
       onFeatureCapture?.({
-        timestamp: Date.now(),
+        timestamp:        Date.now(),
         isLookingAtTarget: false,
-        callAttempt: attemptsRef.current,
-        manualInput: true,
+        callAttempt:      callCountRef.current,
       })
     }
 
+    // Reset sau 2.5s
     setTimeout(() => {
       if (!gameCompletedRef.current) {
         setCurrentChar(CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)])
-        setResponded(false)
-        respondedRef.current = false
-        setLastCallTime(null)
+        setPhase('idle')
+        phaseRef.current = 'idle'
         lastCallTimeRef.current = null
+        setMessage(`👂 Bấm 🔊 để gọi tên ${childName}!`)
       }
-    }, 2000)
-  }
+    }, 2500)
+  }, [childName, onFeatureCapture, onScore])
 
+  // AI detection loop — chỉ detect khi đang waiting VÀ hết cooldown
   const updateLoop = useCallback(() => {
-    const now = Date.now()
-    if (now - lastRecordTimeRef.current > 250) {
-      const aiData = latestAIResult?.current?.features
-      const lct = lastCallTimeRef.current
+    const now     = Date.now()
+    const aiData  = latestAIResult?.current?.features
 
-      if (aiData && lct && !respondedRef.current && !gameCompletedRef.current) {
-        const gazeX = aiData.gazeX ?? 0.5
-        const gazeY = aiData.gazeY ?? 0.5
-        const isLookingAtCharacter = gazeX > 0.35 && gazeX < 0.65 && gazeY > 0.35 && gazeY < 0.65
+    if (
+      now - lastRecordTimeRef.current > 300 &&
+      phaseRef.current === 'waiting' &&
+      aiData &&
+      !gameCompletedRef.current &&
+      now > responseCooldownRef.current // Hết cooldown mới detect
+    ) {
+      const gazeX = aiData.gazeX ?? 0.5
+      const gazeY = aiData.gazeY ?? 0.5
+      const isLooking = gazeX > 0.35 && gazeX < 0.65 && gazeY > 0.25 && gazeY < 0.75
 
-        if (isLookingAtCharacter) {
-          const reactionMs = now - lct
-          setResponded(true)
-          respondedRef.current = true
-          scoreRef.current += 1
-          setScore(scoreRef.current)
-          setMessage(`🎉 Bé phản ứng sau ${reactionMs}ms!`)
-
-          onFeatureCapture?.({
-            timestamp: now, gazeX, gazeY,
-            targetX: 50, targetY: 50,
-            isLookingAtTarget: true,
-            responseLatency: reactionMs,
-            callAttempt: attemptsRef.current,
-          })
-
-          if (scoreRef.current >= 3 && !gameCompletedRef.current) {
-            gameCompletedRef.current = true
-            setTimeout(() => onScore?.(scoreRef.current * 30), 1000)
-          }
-
-          setTimeout(() => {
-            if (!gameCompletedRef.current) {
-              setCurrentChar(CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)])
-              setResponded(false)
-              respondedRef.current = false
-              setLastCallTime(null)
-              lastCallTimeRef.current = null
-            }
-          }, 2000)
-        }
+      if (isLooking && lastCallTimeRef.current) {
+        const rt = now - lastCallTimeRef.current
+        handleResponse(true, rt)
       }
       lastRecordTimeRef.current = now
     }
+
     animationRef.current = requestAnimationFrame(updateLoop)
-  }, [latestAIResult, onFeatureCapture, onScore, childName])
+  }, [latestAIResult, handleResponse])
 
   useEffect(() => {
     animationRef.current = requestAnimationFrame(updateLoop)
-    const startTimer = setTimeout(callName, 2000)
     return () => {
       cancelAnimationFrame(animationRef.current)
-      clearTimeout(startTimer)
       window.speechSynthesis.cancel()
     }
-  }, [updateLoop, callName])
+  }, [updateLoop])
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: 'linear-gradient(135deg, #ffeaa7, #74b9ff)', borderRadius: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 20 }}>
+
+      {/* Timer */}
       <div style={{ position: 'absolute', top: 20, left: 20, background: 'rgba(0,0,0,0.6)', color: 'white', padding: '10px 20px', borderRadius: 30 }}>
         ⏱ {timeElapsed}s / {gameDuration}s
       </div>
+
+      {/* Score */}
       <div style={{ position: 'absolute', top: 20, right: 20, background: 'white', padding: '10px 25px', borderRadius: 30, fontSize: '1.5rem', fontWeight: 'bold' }}>
         ★ {score}/3
       </div>
 
-      <div style={{ fontSize: 150, margin: '40px 0', animation: 'bounce 2s infinite' }}>{currentChar}</div>
+      {/* Nhân vật */}
+      <div style={{
+        fontSize: 140, margin: '50px 0 20px',
+        filter: phase === 'waiting' ? 'drop-shadow(0 0 20px rgba(255,200,0,0.8))' : 'none',
+        transition: 'filter 0.3s',
+        animation: 'bounce 2s infinite'
+      }}>
+        {currentChar}
+      </div>
 
+      {/* Số lần gọi */}
+      {callCount > 0 && (
+        <div style={{ color: '#666', fontSize: 13, marginBottom: 8 }}>
+          Đã gọi {callCount} lần
+        </div>
+      )}
+
+      {/* Buttons */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button onClick={callName}
-          style={{ fontSize: '1.2rem', padding: '12px 24px', background: '#00b894', color: 'white', border: 'none', borderRadius: 50, cursor: 'pointer', boxShadow: '0 5px 15px rgba(0,0,0,0.2)' }}>
-          📢 Gọi tên bé
+
+        {/* Nút gọi tên — luôn hiện, disable khi đang waiting */}
+        <button
+          onClick={callName}
+          disabled={phase === 'waiting' || phase === 'calling'}
+          style={{
+            fontSize: '1.1rem', padding: '12px 28px',
+            background: phase === 'waiting' ? '#94a3b8' : '#00b894',
+            color: 'white', border: 'none', borderRadius: 50, cursor: phase === 'waiting' ? 'not-allowed' : 'pointer',
+            boxShadow: '0 5px 15px rgba(0,0,0,0.2)', fontWeight: 700,
+            transition: 'background 0.2s'
+          }}>
+          🔊 Gọi tên {childName}
         </button>
-        {lastCallTime && !responded && (
+
+        {/* Nút xác nhận — chỉ hiện khi waiting */}
+        {phase === 'waiting' && (
           <>
-            <button onClick={() => handleManualResponse(true)}
-              style={{ fontSize: '1rem', padding: '12px 20px', background: '#22c55e', color: 'white', border: 'none', borderRadius: 50, cursor: 'pointer' }}>
+            <button
+              onClick={() => handleResponse(true)}
+              style={{ fontSize: '1rem', padding: '12px 22px', background: '#22c55e', color: 'white', border: 'none', borderRadius: 50, cursor: 'pointer', fontWeight: 700, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
               ✅ Bé quay lại
             </button>
-            <button onClick={() => handleManualResponse(false)}
-              style={{ fontSize: '1rem', padding: '12px 20px', background: '#ef4444', color: 'white', border: 'none', borderRadius: 50, cursor: 'pointer' }}>
+            <button
+              onClick={() => handleResponse(false)}
+              style={{ fontSize: '1rem', padding: '12px 22px', background: '#ef4444', color: 'white', border: 'none', borderRadius: 50, cursor: 'pointer', fontWeight: 700, boxShadow: '0 4px 12px rgba(0,0,0,0.2)' }}>
               ❌ Không phản hồi
             </button>
           </>
         )}
       </div>
 
-      <div style={{ marginTop: 10, fontSize: '1.2rem', fontWeight: 'bold' }}>{message}</div>
+      {/* Hướng dẫn */}
+      <div style={{ marginTop: 8, fontSize: '1.1rem', fontWeight: 'bold', textAlign: 'center', padding: '0 20px' }}>
+        {message}
+      </div>
+      <p style={{ color: '#555', fontSize: 12, marginTop: 8 }}>
+        Bấm 🔊 → quan sát bé → xác nhận kết quả
+      </p>
+
       <style>{`@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }`}</style>
     </div>
   )
