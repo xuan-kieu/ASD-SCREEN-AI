@@ -40,15 +40,47 @@ class AppointmentAction(BaseModel):
 # ── Helper ─────────────────────────────────────────────────────────────────
 
 def _notify_telegram(message: str):
-    """Gọi Telegram bot để gửi thông báo — import lazy để tránh circular"""
+    """Gửi thông báo Telegram đến tất cả user có telegram_chat_id"""
     try:
-        import requests, os
-        token = os.getenv("TELEGRAM_BOT_TOKEN")
-        # Lấy tất cả chat_id từ DB không dùng được ở đây vì không có db session
-        # Telegram bot sẽ tự poll và xử lý — chỉ log ở đây
-        print(f"[APPOINTMENT NOTIFY] {message}")
-    except Exception:
-        pass
+        import requests as req, os
+        from app.database import SessionLocal
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not bot_token:
+            print("[TG] TELEGRAM_BOT_TOKEN chưa được cấu hình")
+            return
+        db = SessionLocal()
+        try:
+            rows = db.execute(text(
+                "SELECT telegram_chat_id FROM users WHERE telegram_chat_id IS NOT NULL AND is_active = 1"
+            )).fetchall()
+            for row in rows:
+                chat_id = row[0]
+                if chat_id:
+                    req.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": chat_id, "text": message},
+                        timeout=5
+                    )
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"[TG] Notify error: {e}")
+
+
+def _notify_telegram_user(chat_id: str, message: str):
+    """Gửi thông báo Telegram đến 1 user cụ thể"""
+    try:
+        import requests as req, os
+        bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if not bot_token or not chat_id:
+            return
+        req.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": message},
+            timeout=5
+        )
+    except Exception as e:
+        print(f"[TG] Notify user error: {e}")
 
 
 # ── SPECIALIST: Quản lý slot ───────────────────────────────────────────────
@@ -436,3 +468,4 @@ def get_all_appointments(
 
     rows = db.execute(text(query), params).mappings().fetchall()
     return [dict(r) for r in rows]
+

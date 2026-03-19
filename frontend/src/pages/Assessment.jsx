@@ -3,6 +3,8 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import api from '../api/axios'
 import CameraAI from '../components/CameraAI'
 import DeviceCheck from '../components/DeviceCheck'
+import AudioIndicator from '../components/AudioIndicator'
+import useAudio from '../hooks/useAudio'
 
 const gameComponents = {
   'GATEWAY_BALLOON':  lazy(() => import('../components/games/GW_Balloon')),
@@ -82,6 +84,21 @@ export default function Assessment() {
   // Camera AI
   const [cameraEnabled, setCameraEnabled] = useState(true)
 
+  // Audio AI — thu âm trong khi chơi game
+  const [currentGameSessionId, setCurrentGameSessionId] = useState(null)
+
+  const {
+    isRecording,
+    audioResult,
+    startRecording,
+    stopRecording,
+    error: audioError,
+  } = useAudio({
+    gameSessionId: currentGameSessionId,
+    gameCode: phase === 'gateway' ? GATEWAY_SEQUENCE[gatewayIdx]?.code : gameSequence[gameIdx],
+    enabled: true,
+  })
+
   const timerRef        = useRef(null)
   const featuresBuffer  = useRef([])
   const latestAIResult  = useRef(null)
@@ -138,7 +155,9 @@ export default function Assessment() {
     const toSend = [...featuresBuffer.current]
     featuresBuffer.current = []
     try {
-      await api.post(`/assessments/${assessmentId}/features`, { game_code: gameCode, features: toSend })
+      const res = await api.post(`/assessments/${assessmentId}/features`, { game_code: gameCode, features: toSend })
+      // Lưu session_id để audio biết gắn vào đâu
+      if (res.data?.session_id) setCurrentGameSessionId(res.data.session_id)
     } catch (e) {}
   }
 
@@ -150,6 +169,7 @@ export default function Assessment() {
 
   const handleGatewayNextRef = useCallback(async (passed) => {
     stopTimer()
+    stopRecording()
     const idx       = gatewayIdxRef.current
     const scores    = gatewayScoresRef.current
     const current   = GATEWAY_SEQUENCE[idx]
@@ -176,6 +196,7 @@ export default function Assessment() {
 
   const handleMainGameNextRef = useCallback(async () => {
     stopTimer()
+    stopRecording()
     setGameRunning(false)
     const idx      = gameIdxRef.current
     const sequence = gameSequenceRef.current
@@ -211,6 +232,7 @@ export default function Assessment() {
   const startGateway = () => {
     setGatewayRunning(true)
     startTimer(GATEWAY_SEQUENCE[gatewayIdxRef.current].duration)
+    startRecording()
   }
 
   const handleGatewayScore = (score) => { handleGatewayNext(score >= 60) }
@@ -233,6 +255,7 @@ export default function Assessment() {
     setGameRunning(true)
     const config = AGE_GROUP_GAMES[ageGroupRef.current]
     startTimer(config.duration[gameModeRef.current])
+    startRecording()
   }
 
   const currentGateway    = GATEWAY_SEQUENCE[gatewayIdx]
@@ -316,6 +339,7 @@ export default function Assessment() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {/* Toggle camera */}
+          <AudioIndicator audioResult={audioResult} isRecording={isRecording} error={audioError} />
           <button onClick={() => setCameraEnabled(p => !p)}
             style={{ ...S.btnBlue, background: cameraEnabled ? '#1e3a5f' : '#334155', fontSize: 12, padding: '6px 12px' }}>
             {cameraEnabled ? '📷 AI On' : '📷 Off'}
@@ -461,6 +485,7 @@ export default function Assessment() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <AudioIndicator audioResult={audioResult} isRecording={isRecording} error={audioError} />
           <button onClick={() => setCameraEnabled(p => !p)}
             style={{ ...S.btnBlue, background: cameraEnabled ? '#1e3a5f' : '#334155', fontSize: 12, padding: '6px 12px' }}>
             {cameraEnabled ? '📷 AI On' : '📷 Off'}

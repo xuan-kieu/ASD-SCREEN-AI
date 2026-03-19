@@ -14,9 +14,52 @@ from app.services.ai.audio_service import analyze_audio_chunk, aggregate_audio_r
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 
-# Cache kết quả trong memory theo session_id
-# { session_id: [result1, result2, ...] }
+# Cache kết quả — dùng Redis nếu có, fallback dict
+import os
+_redis_client = None
 _session_cache: dict = {}
+
+def _get_redis():
+    global _redis_client
+    if _redis_client is None:
+        try:
+            import redis
+            _redis_client = redis.Redis.from_url(
+                os.getenv("REDIS_URL", "redis://asd_redis:6379"),
+                decode_responses=True
+            )
+            _redis_client.ping()
+        except Exception:
+            _redis_client = False  # Đánh dấu không dùng Redis
+    return _redis_client if _redis_client else None
+
+def _cache_append(session_id: str, result: dict):
+    r = _get_redis()
+    if r:
+        import json as _json
+        r.rpush(f"audio:{session_id}", _json.dumps(result))
+        r.expire(f"audio:{session_id}", 3600)
+    else:
+        if session_id not in _session_cache:
+            _session_cache[session_id] = []
+        _session_cache[session_id].append(result)
+
+def _cache_pop(session_id: str) -> list:
+    r = _get_redis()
+    if r:
+        import json as _json
+        key = f"audio:{session_id}"
+        items = r.lrange(key, 0, -1)
+        r.delete(key)
+        return [_json.loads(i) for i in items]
+    else:
+        return _session_cache.pop(session_id, [])
+
+def _cache_len(session_id: str) -> int:
+    r = _get_redis()
+    if r:
+        return r.llen(f"audio:{session_id}")
+    return len(_session_cache.get(session_id, []))
 
 
 @router.post("/analyze")
@@ -40,21 +83,24 @@ async def analyze_audio(
     # Phân tích
     result = analyze_audio_chunk(audio_bytes)
 
-    # Lưu vào cache theo session
+    # Lưu vào cache (Redis hoặc dict)
     if game_session_id:
-        if game_session_id not in _session_cache:
-            _session_cache[game_session_id] = []
-        _session_cache[game_session_id].append(result)
-
-        # Giới hạn cache 50 chunk / session
-        if len(_session_cache[game_session_id]) > 50:
-            _session_cache[game_session_id] = _session_cache[game_session_id][-50:]
+        # Verify session thuộc về current_user
+        row = db.execute(
+            text("""SELECT gs.id FROM game_sessions gs
+                    JOIN assessments a ON a.id = gs.assessment_id
+                    WHERE gs.id = :id AND a.started_by = :uid"""),
+            {"id": game_session_id, "uid": str(current_user.id)}
+        ).fetchone()
+        if not row:
+            raise HTTPException(403, "Không có quyền ghi audio vào session này")
+        _cache_append(game_session_id, result)
 
     return {
         "game_session_id": game_session_id,
         "game_code":       game_code,
         "analysis":        result,
-        "chunk_index":     len(_session_cache.get(game_session_id, [])),
+        "chunk_index":     _cache_len(game_session_id) if game_session_id else 0,
     }
 
 
@@ -68,7 +114,7 @@ async def finalize_session_audio(
     Kết thúc session → tổng hợp tất cả chunk → lưu vào DB
     Gọi khi game kết thúc
     """
-    chunks = _session_cache.pop(game_session_id, [])
+    chunks = _cache_pop(game_session_id)
 
     if not chunks:
         return {"message": "Không có dữ liệu audio", "summary": None}
@@ -144,3 +190,4 @@ async def get_session_summary(
         return {"message": "Chưa có dữ liệu audio", "summary": None}
 
     return {"game_session_id": game_session_id, "summary": audio_summary}
+

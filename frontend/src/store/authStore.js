@@ -18,9 +18,10 @@ const useAuthStore = create((set) => ({
     set({ loading: true, error: null })
     try {
       const res = await api.post('/auth/login', { username, password })
-      const { access_token, role, full_name } = res.data
+      const { access_token, refresh_token, role, full_name } = res.data
       const user = { username, role, full_name }
       localStorage.setItem('token', access_token)
+      if (refresh_token) localStorage.setItem('refresh_token', refresh_token)
       localStorage.setItem('user', JSON.stringify(user))
       set({ token: access_token, user, loading: false })
       return true
@@ -33,6 +34,7 @@ const useAuthStore = create((set) => ({
 
   logout: () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
     set({ token: null, user: null })
   }

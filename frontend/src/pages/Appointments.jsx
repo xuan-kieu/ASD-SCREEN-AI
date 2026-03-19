@@ -11,7 +11,8 @@ const STATUS_LABEL = {
 }
 
 export default function Appointments() {
-  const { role } = useAuthStore()
+  const { user } = useAuthStore()
+  const role = user?.role
   const [tab, setTab] = useState('list')
   const [appointments, setAppointments] = useState([])
   const [availableSlots, setAvailableSlots] = useState([])

@@ -39,6 +39,10 @@ def create_assessment(
     if not child:
         raise HTTPException(status_code=404, detail="Không tìm thấy trẻ")
 
+    # Phụ huynh chỉ tạo assessment cho trẻ của mình
+    if current_user.role == "parent" and str(child.parent_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Không có quyền tạo đánh giá cho trẻ này")
+
     new_id = str(uuid.uuid4())
     db.execute(text("""
         INSERT INTO assessments (id, child_id, started_by, status)
@@ -60,6 +64,11 @@ def get_child_assessments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Phụ huynh chỉ xem assessment của trẻ mình
+    if current_user.role == "parent":
+        child = db.query(Child).filter(Child.id == child_id).first()
+        if not child or str(child.parent_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Không có quyền xem")
     assessments = db.query(Assessment).filter(Assessment.child_id == child_id).all()
     return [assessment_to_dict(a) for a in assessments]
 
@@ -123,6 +132,10 @@ def complete_assessment(
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
     if not assessment:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên đánh giá")
+
+    # Phụ huynh chỉ complete assessment của mình
+    if current_user.role == "parent" and str(assessment.started_by) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Không có quyền hoàn thành đánh giá này")
 
     child = db.query(Child).filter(Child.id == assessment.child_id).first()
 

@@ -16,17 +16,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router,          prefix="/api/auth",          tags=["Auth"])
-app.include_router(children.router,      prefix="/api/children",      tags=["Children"])
-app.include_router(assessments.router,   prefix="/api/assessments",   tags=["Assessments"])
-app.include_router(games.router,         prefix="/api/games",         tags=["Games"])
-app.include_router(reports.router,       prefix="/api/reports",       tags=["Reports"])
-app.include_router(messages.router,      prefix="/api/messages",      tags=["Messages"])
-app.include_router(admin.router,         prefix="/api/admin",         tags=["Admin"])
-app.include_router(mchat.router,         prefix="/api/mchat",         tags=["MCHAT"])
-app.include_router(appointments.router,  prefix="/api/appointments",  tags=["Appointments"])
-app.include_router(ws.router,            prefix="/ws",                tags=["WebSocket"])
-app.include_router(audio.router,        prefix="/api/audio",   tags=["Audio"])
+app.include_router(auth.router,         prefix="/api/auth",        tags=["Auth"])
+app.include_router(children.router,     prefix="/api/children",    tags=["Children"])
+app.include_router(assessments.router,  prefix="/api/assessments", tags=["Assessments"])
+app.include_router(games.router,        prefix="/api/games",       tags=["Games"])
+app.include_router(reports.router,      prefix="/api/reports",     tags=["Reports"])
+app.include_router(messages.router,     prefix="/api/messages",    tags=["Messages"])
+app.include_router(admin.router,        prefix="/api")             # admin.py có prefix="/admin" → /api/admin
+app.include_router(mchat.router,        prefix="/api")             # mchat.py có prefix="/mchat" → /api/mchat
+app.include_router(appointments.router, prefix="/api/appointments", tags=["Appointments"])
+app.include_router(ws.router,           prefix="/api")             # ws.py endpoint /ws/messages → /api/ws/messages
+app.include_router(audio.router,        prefix="/api")             # audio.py có prefix="/audio" → /api/audio
 
 @app.get("/")
 def root():
