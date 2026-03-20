@@ -15,4 +15,4 @@ class Game(Base):
     target_duration_seconds = Column(Integer)
     media_url               = Column(Text)
     is_gateway              = Column(Boolean, default=False)
-    created_at              = Column(DateTime(timezone=True), server_default=func.sysdatetimeoffset())
+    created_at              = Column(DateTime(timezone=True), server_default=func.now())

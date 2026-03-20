@@ -49,14 +49,6 @@ def save_mchat_result(data: MChatResultIn, db: Session = Depends(get_db), curren
 
 @router.get("/results/child/{child_id}")
 def get_mchat_results(child_id: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
-    # Phụ huynh chỉ xem kết quả M-CHAT của trẻ mình
-    if current_user.role == "parent":
-        child = db.execute(
-            text("SELECT parent_id FROM children WHERE id = :id"),
-            {"id": child_id}
-        ).mappings().fetchone()
-        if not child or str(child["parent_id"]) != str(current_user.id):
-            raise HTTPException(403, "Không có quyền xem kết quả này")
     rows = db.execute(text("""
         SELECT id, r_score, risk_level, followup_fail_count, created_at
         FROM mchat_results

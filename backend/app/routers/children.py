@@ -113,7 +113,7 @@ def update_child(
             region           = COALESCE(:region, region),
             primary_language = COALESCE(:primary_language, primary_language),
             notes            = COALESCE(:notes, notes),
-            updated_at       = GETDATE()
+            updated_at       = NOW()
         WHERE id = :id
     """), {
         "id":               child_id,

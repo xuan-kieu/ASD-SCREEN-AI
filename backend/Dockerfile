@@ -1,26 +1,22 @@
 FROM python:3.11-slim
 
-# Cài ODBC Driver 17 — tương thích Debian 13 Trixie (apt-key đã bị bỏ)
-RUN apt-get update && apt-get install -y \
-    curl \
-    gnupg2 \
-    unixodbc-dev \
-    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-       | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] \
-       https://packages.microsoft.com/debian/12/prod bookworm main" \
-       > /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+# Tạo startup script
+RUN echo '#!/bin/bash\n\
+python -c "from app.database import engine, Base; from app.models import user, child, game, assessment, message; Base.metadata.create_all(bind=engine); print(\"DB tables created\")"\n\
+uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}' > /start.sh \
+&& chmod +x /start.sh
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["/start.sh"]

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
@@ -8,7 +8,6 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    implicit_returning=False  # Fix cho SQL Server trigger conflict
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

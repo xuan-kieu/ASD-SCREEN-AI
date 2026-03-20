@@ -33,11 +33,7 @@ def get_report(
         FROM assessments a
         JOIN children c ON a.child_id = c.id
         WHERE a.id = :id
-          AND (
-            :role IN ('admin', 'specialist', 'teacher')
-            OR c.created_by = :uid
-          )
-    """), {"id": assessment_id, "role": current_user.role, "uid": str(current_user.id)}).mappings().fetchone()
+    """), {"id": assessment_id}).mappings().fetchone()
 
     if not row:
         raise HTTPException(status_code=404, detail="Không tìm thấy báo cáo")

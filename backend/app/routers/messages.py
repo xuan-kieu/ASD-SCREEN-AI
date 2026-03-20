@@ -101,7 +101,7 @@ async def send_message(
 
     db.execute(text("""
         INSERT INTO messages (id, from_user_id, to_user_id, child_id, content, is_read, created_at)
-        VALUES (:id, :from_id, :to_id, :child_id, :content, 0, GETDATE())
+        VALUES (:id, :from_id, :to_id, :child_id, :content, 0, NOW())
     """), {
         "id":       msg_id,
         "from_id":  str(current_user.id),
@@ -150,7 +150,7 @@ async def mark_read(
     ).mappings().fetchone()
 
     result = db.execute(text("""
-        UPDATE messages SET is_read = 1, read_at = GETDATE()
+        UPDATE messages SET is_read = 1, read_at = NOW()
         WHERE id = :id AND to_user_id = :uid
     """), {"id": message_id, "uid": str(current_user.id)})
     db.commit()
@@ -195,3 +195,4 @@ def get_users_list(
         }
         for r in rows
     ]
+
