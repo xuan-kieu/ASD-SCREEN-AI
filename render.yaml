@@ -49,5 +49,7 @@ databases:
     plan: free
 
   - name: asd-screen-redis
-    type: redis
+    type: pserv
+    env: docker
     plan: free
+    repo: https://github.com/render-examples/redis
