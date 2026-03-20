@@ -10,11 +10,6 @@ services:
         fromDatabase:
           name: asd-screen-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: asd-screen-redis
-          type: redis
-          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
@@ -22,7 +17,7 @@ services:
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "60"
       - key: TELEGRAM_BOT_TOKEN
-        sync: false   # Điền tay trong Render dashboard
+        sync: false
       - key: ENVIRONMENT
         value: production
 
@@ -47,9 +42,3 @@ services:
 databases:
   - name: asd-screen-db
     plan: free
-
-  - name: asd-screen-redis
-    type: pserv
-    env: docker
-    plan: free
-    repo: https://github.com/render-examples/redis
