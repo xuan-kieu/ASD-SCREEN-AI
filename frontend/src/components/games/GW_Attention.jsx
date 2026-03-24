@@ -8,11 +8,11 @@ export default function GW_Attention({
   onScore,
   timeElapsed,
   childName,
-  gameDuration = 60,
+  gameDuration = 120, // Đã sửa thành 120 giây (2 phút)
 }) {
   const [currentChar, setCurrentChar] = useState('🐶')
   const [score, setScore]             = useState(0)
-  const [phase, setPhase]             = useState('idle') // idle | calling | waiting | responded
+  const [phase, setPhase]             = useState('idle') // idle | waiting | responded
   const [message, setMessage]         = useState(`👂 Bấm 🔊 để gọi tên ${childName}!`)
   const [callCount, setCallCount]     = useState(0)
 
@@ -23,16 +23,19 @@ export default function GW_Attention({
   const phaseRef            = useRef('idle')
   const lastCallTimeRef     = useRef(null)
   const callCountRef        = useRef(0)
-  // Cooldown để tránh AI detect liên tục gây phản hồi ngay lập tức
   const responseCooldownRef = useRef(0)
 
   useEffect(() => { phaseRef.current = phase }, [phase])
 
-  // Fallback hết giờ
+  // Xử lý khi hết 2 phút (120s)
   useEffect(() => {
     if (timeElapsed >= gameDuration && !gameCompletedRef.current) {
       gameCompletedRef.current = true
-      onScore?.(Math.min(100, scoreRef.current * 30))
+      // Tính điểm phần trăm: (Số lần phản hồi / Tổng số lần gọi) * 100
+      const finalScore = callCountRef.current > 0 
+        ? Math.round((scoreRef.current / callCountRef.current) * 100) 
+        : 0
+      onScore?.(finalScore)
     }
   }, [timeElapsed, gameDuration, onScore])
 
@@ -46,21 +49,24 @@ export default function GW_Attention({
     }
   }
 
-  // Gọi tên — chỉ khi bấm nút, không tự động
+  // Gọi tên — Nút gọi sẽ bị disable sau khi bấm
   const callName = useCallback(() => {
     if (gameCompletedRef.current || phaseRef.current === 'waiting') return
+    
     speak(`${childName} ơi!`)
+    
     const now = Date.now()
-    lastCallTimeRef.current   = now
-    responseCooldownRef.current = now + 1500 // Cooldown 1.5s — tránh AI phản hồi ngay
-    callCountRef.current += 1
+    lastCallTimeRef.current     = now
+    responseCooldownRef.current = now + 1500 
+    callCountRef.current       += 1
+    
     setCallCount(callCountRef.current)
     setPhase('waiting')
     phaseRef.current = 'waiting'
     setMessage(`🔊 Đang gọi "${childName}"... Bé có quay lại không?`)
   }, [childName])
 
-  // Xử lý phản hồi
+  // Xử lý phản hồi (Bấm nút thủ công hoặc AI tự nhận diện)
   const handleResponse = useCallback((didRespond, reactionMs = null) => {
     if (phaseRef.current !== 'waiting' || gameCompletedRef.current) return
 
@@ -74,38 +80,34 @@ export default function GW_Attention({
       setScore(scoreRef.current)
       setMessage(`🎉 Bé phản hồi! (${rt}ms)`)
       onFeatureCapture?.({
-        timestamp:        Date.now(),
+        timestamp:          Date.now(),
         isLookingAtTarget: true,
-        responseLatency:  rt,
-        callAttempt:      callCountRef.current,
+        responseLatency:    rt,
+        callAttempt:        callCountRef.current,
       })
-      if (scoreRef.current >= 3 && !gameCompletedRef.current) {
-        gameCompletedRef.current = true
-        setTimeout(() => onScore?.(Math.min(100, scoreRef.current * 30)), 1000)
-        return
-      }
+      // Đã xóa điều kiện dừng game khi đạt 3 điểm ở đây
     } else {
       setMessage('😔 Bé chưa phản hồi lần này')
       onFeatureCapture?.({
-        timestamp:        Date.now(),
+        timestamp:          Date.now(),
         isLookingAtTarget: false,
-        callAttempt:      callCountRef.current,
+        callAttempt:        callCountRef.current,
       })
     }
 
-    // Reset sau 2.5s
+    // Sau khi xác nhận, đợi 2.5s để reset lại trạng thái cho phép gọi tiếp
     setTimeout(() => {
       if (!gameCompletedRef.current) {
         setCurrentChar(CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)])
         setPhase('idle')
         phaseRef.current = 'idle'
         lastCallTimeRef.current = null
-        setMessage(`👂 Bấm 🔊 để gọi tên ${childName}!`)
+        setMessage(`👂 Bấm 🔊 để gọi tiếp ${childName}!`)
       }
     }, 2500)
-  }, [childName, onFeatureCapture, onScore])
+  }, [childName, onFeatureCapture])
 
-  // AI detection loop — chỉ detect khi đang waiting VÀ hết cooldown
+  // Vòng lặp AI - Nhận diện tự động nếu bé nhìn vào cam
   const updateLoop = useCallback(() => {
     const now     = Date.now()
     const aiData  = latestAIResult?.current?.features
@@ -115,7 +117,7 @@ export default function GW_Attention({
       phaseRef.current === 'waiting' &&
       aiData &&
       !gameCompletedRef.current &&
-      now > responseCooldownRef.current // Hết cooldown mới detect
+      now > responseCooldownRef.current
     ) {
       const gazeX = aiData.gazeX ?? 0.5
       const gazeY = aiData.gazeY ?? 0.5
@@ -147,9 +149,9 @@ export default function GW_Attention({
         ⏱ {timeElapsed}s / {gameDuration}s
       </div>
 
-      {/* Score */}
-      <div style={{ position: 'absolute', top: 20, right: 20, background: 'white', padding: '10px 25px', borderRadius: 30, fontSize: '1.5rem', fontWeight: 'bold' }}>
-        ★ {score}/3
+      {/* Hiển thị số lần phản hồi / tổng số lần gọi */}
+      <div style={{ position: 'absolute', top: 20, right: 20, background: 'white', padding: '10px 25px', borderRadius: 30, fontSize: '1.2rem', fontWeight: 'bold' }}>
+        ★ {score} / {callCount}
       </div>
 
       {/* Nhân vật */}
@@ -162,31 +164,24 @@ export default function GW_Attention({
         {currentChar}
       </div>
 
-      {/* Số lần gọi */}
-      {callCount > 0 && (
-        <div style={{ color: '#666', fontSize: 13, marginBottom: 8 }}>
-          Đã gọi {callCount} lần
-        </div>
-      )}
-
       {/* Buttons */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
 
-        {/* Nút gọi tên — luôn hiện, disable khi đang waiting */}
+        {/* Nút gọi tên */}
         <button
           onClick={callName}
-          disabled={phase === 'waiting' || phase === 'calling'}
+          disabled={phase !== 'idle'}
           style={{
             fontSize: '1.1rem', padding: '12px 28px',
-            background: phase === 'waiting' ? '#94a3b8' : '#00b894',
-            color: 'white', border: 'none', borderRadius: 50, cursor: phase === 'waiting' ? 'not-allowed' : 'pointer',
+            background: phase !== 'idle' ? '#94a3b8' : '#00b894',
+            color: 'white', border: 'none', borderRadius: 50, cursor: phase !== 'idle' ? 'not-allowed' : 'pointer',
             boxShadow: '0 5px 15px rgba(0,0,0,0.2)', fontWeight: 700,
             transition: 'background 0.2s'
           }}>
           🔊 Gọi tên {childName}
         </button>
 
-        {/* Nút xác nhận — chỉ hiện khi waiting */}
+        {/* Cụm Nút xác nhận — chỉ hiện khi waiting */}
         {phase === 'waiting' && (
           <>
             <button
@@ -204,7 +199,7 @@ export default function GW_Attention({
       </div>
 
       {/* Hướng dẫn */}
-      <div style={{ marginTop: 8, fontSize: '1.1rem', fontWeight: 'bold', textAlign: 'center', padding: '0 20px' }}>
+      <div style={{ marginTop: 8, fontSize: '1.1rem', fontWeight: 'bold', textAlign: 'center', padding: '0 20px', minHeight: '30px' }}>
         {message}
       </div>
       <p style={{ color: '#555', fontSize: 12, marginTop: 8 }}>

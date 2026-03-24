@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
 import Dashboard from './pages/Dashboard'
 import AddChild from './pages/AddChild'
 import ChildDetail from './pages/ChildDetail'
@@ -21,8 +22,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login"    element={<Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/login"           element={<Login />} />
+        <Route path="/register"        element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/dashboard"      element={<PrivateRoute><Dashboard /></PrivateRoute>} />
         <Route path="/children/add"   element={<PrivateRoute><AddChild /></PrivateRoute>} />
         <Route path="/children/:id"   element={<PrivateRoute><ChildDetail /></PrivateRoute>} />
@@ -30,7 +32,7 @@ export default function App() {
         <Route path="/report/:id"     element={<PrivateRoute><Report /></PrivateRoute>} />
         <Route path="/messages"       element={<PrivateRoute><Messages /></PrivateRoute>} />
         <Route path="/admin"          element={<PrivateRoute><Admin /></PrivateRoute>} />
-        <Route path="/appointments" element={<PrivateRoute><Appointments /></PrivateRoute>} />
+        <Route path="/appointments"   element={<PrivateRoute><Appointments /></PrivateRoute>} />
         <Route path="/profile"        element={<PrivateRoute><Profile /></PrivateRoute>} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>

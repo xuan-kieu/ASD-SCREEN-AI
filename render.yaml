@@ -10,6 +10,11 @@ services:
         fromDatabase:
           name: asd-screen-db
           property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: asd-screen-redis
+          type: redis
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: ALGORITHM
@@ -41,4 +46,8 @@ services:
 
 databases:
   - name: asd-screen-db
+    plan: free
+
+  - name: asd-screen-redis
+    type: redis
     plan: free

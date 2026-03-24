@@ -267,7 +267,42 @@ export default function Assessment() {
   // ─── PHASE: SETUP ───────────────────────────────────────────
   if (phase === PHASE.SETUP) return (
     <div style={S.root}>
-      <div style={S.card}>
+      
+      {/* HEADER: Chứa nút Trở về Dashboard */}
+      <div style={{
+        width: '100%',
+        padding: '16px 24px',
+        boxSizing: 'border-box',
+        display: 'flex',
+        justifyContent: 'flex-start',
+        flexShrink: 0, // Đảm bảo header không bị ép nhỏ
+        background: 'transparent'
+      }}>
+        <button
+          onClick={() => navigate('/dashboard')}
+          style={{
+            padding: '8px 16px',
+            background: '#1e293b',
+            border: '1px solid #334155',
+            borderRadius: '8px',
+            color: '#e2e8f0',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            transition: 'background 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = '#334155'}
+          onMouseOut={(e) => e.currentTarget.style.background = '#1e293b'}
+        >
+          ← Trở về Dashboard
+        </button>
+      </div>
+
+      {/* NỘI DUNG CHÍNH: Form thông tin */}
+      <div style={{ ...S.card, paddingTop: 0 }}> {/* Giảm padding top một chút để cân đối */}
         <div style={{ fontSize: 48, marginBottom: 16 }}>👶</div>
         <h2 style={{ color: '#e2e8f0', fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Thông tin trẻ</h2>
         <div style={{ width: '100%', marginBottom: 16 }}>

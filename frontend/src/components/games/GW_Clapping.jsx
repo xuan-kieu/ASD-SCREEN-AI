@@ -5,6 +5,34 @@ const ACTIONS = [
   { name: 'vẫy tay', emoji: '👋' },
 ]
 
+const playClap = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const bufferSize = ctx.sampleRate * 0.15
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
+    const data = buffer.getChannelData(0)
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3)
+    }
+    const source = ctx.createBufferSource()
+    source.buffer = buffer
+    const filter = ctx.createBiquadFilter()
+    filter.type = 'bandpass'
+    filter.frequency.value = 1200
+    filter.Q.value = 0.8
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(1.5, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15)
+    source.connect(filter)
+    filter.connect(gain)
+    gain.connect(ctx.destination)
+    source.start()
+    setTimeout(() => ctx.close(), 500)
+  } catch (e) {
+    console.log('Audio not supported')
+  }
+}
+
 export default function GW_Clapping({
   latestAIResult,
   onFeatureCapture,
@@ -14,7 +42,7 @@ export default function GW_Clapping({
 }) {
   const [currentAction, setCurrentAction] = useState(ACTIONS[0])
   const [score, setScore]                 = useState(0)
-  const [phase, setPhase]                 = useState('idle') // idle | waiting | responded
+  const [phase, setPhase]                 = useState('idle')
   const [message, setMessage]             = useState('🐻 Bấm ▶ để bắt đầu!')
 
   const gameCompletedRef    = useRef(false)
@@ -24,13 +52,11 @@ export default function GW_Clapping({
   const phaseRef            = useRef('idle')
   const lastActionTimeRef   = useRef(null)
   const currentActionRef    = useRef(ACTIONS[0])
-  // Cooldown tránh AI detect tay liên tục
   const handCooldownRef     = useRef(0)
 
   useEffect(() => { phaseRef.current = phase }, [phase])
   useEffect(() => { currentActionRef.current = currentAction }, [currentAction])
 
-  // Fallback hết giờ
   useEffect(() => {
     if (timeElapsed >= gameDuration && !gameCompletedRef.current) {
       gameCompletedRef.current = true
@@ -54,15 +80,26 @@ export default function GW_Clapping({
     currentActionRef.current = action
     const now = Date.now()
     lastActionTimeRef.current = now
-    handCooldownRef.current   = now + 1000 // Cooldown 1s
+    handCooldownRef.current   = now + 1000
     setPhase('waiting')
     phaseRef.current = 'waiting'
     setMessage(`🐻 Bé hãy ${action.name} nào!`)
     speak(`Bé hãy ${action.name} nào!`)
+    if (action.name === 'vỗ tay') {
+      // Phát 2 tiếng vỗ tay liên tiếp để làm mẫu
+      playClap()
+      setTimeout(playClap, 300)
+      setTimeout(playClap, 600)
+    }
   }, [])
 
   const handleSuccess = useCallback((reactionTime) => {
     if (gameCompletedRef.current || phaseRef.current !== 'waiting') return
+
+    // Phát tiếng vỗ tay khi bé làm đúng
+    playClap()
+    setTimeout(playClap, 250)
+
     scoreRef.current += 1
     setScore(scoreRef.current)
     setPhase('responded')
@@ -70,15 +107,19 @@ export default function GW_Clapping({
     setMessage(`🎉 Đúng rồi! (${reactionTime}ms)`)
 
     onFeatureCapture?.({
-      timestamp:        Date.now(),
+      timestamp:         Date.now(),
       isLookingAtTarget: true,
-      imitationLatency: reactionTime,
-      imitationSuccess: true,
-      actionName:       currentActionRef.current.name,
+      imitationLatency:  reactionTime,
+      imitationSuccess:  true,
+      actionName:        currentActionRef.current.name,
     })
 
     if (scoreRef.current >= 3 && !gameCompletedRef.current) {
       gameCompletedRef.current = true
+      // Phát 3 tiếng vỗ tay chúc mừng
+      playClap()
+      setTimeout(playClap, 250)
+      setTimeout(playClap, 500)
       setTimeout(() => onScore?.(Math.min(100, scoreRef.current * 30)), 1000)
       return
     }
@@ -98,7 +139,6 @@ export default function GW_Clapping({
     setTimeout(performAction, 2000)
   }, [onFeatureCapture, performAction])
 
-  // AI detection — chỉ khi waiting + hết cooldown
   const updateLoop = useCallback(() => {
     const now    = Date.now()
     const aiData = latestAIResult?.current?.features
@@ -140,7 +180,13 @@ export default function GW_Clapping({
       </div>
 
       {/* Emoji hành động */}
-      <div style={{ fontSize: 160, marginBottom: 10, filter: phase === 'waiting' ? 'drop-shadow(0 0 20px rgba(255,165,0,0.9))' : 'none', transition: 'filter 0.3s' }}>
+      <div style={{
+        fontSize: 160,
+        marginBottom: 10,
+        filter: phase === 'waiting' ? 'drop-shadow(0 0 20px rgba(255,165,0,0.9))' : 'none',
+        transition: 'filter 0.3s',
+        animation: phase === 'waiting' ? 'bounce 0.5s infinite alternate' : 'none',
+      }}>
         {currentAction.emoji}
       </div>
 
@@ -152,7 +198,6 @@ export default function GW_Clapping({
       {/* Buttons */}
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
 
-        {/* Nút bắt đầu / tiếp theo — khi idle */}
         {phase === 'idle' && (
           <button
             onClick={performAction}
@@ -162,7 +207,6 @@ export default function GW_Clapping({
           </button>
         )}
 
-        {/* Nút xác nhận khi waiting */}
         {phase === 'waiting' && (
           <>
             <button
@@ -180,7 +224,6 @@ export default function GW_Clapping({
           </>
         )}
 
-        {/* Đang xử lý */}
         {phase === 'responded' && (
           <div style={{ fontSize: 14, color: '#666' }}>⏳ Chuẩn bị lượt tiếp theo...</div>
         )}
@@ -189,6 +232,13 @@ export default function GW_Clapping({
       <p style={{ marginTop: 20, color: '#666', fontSize: 13 }}>
         {phase === 'idle' ? 'Bấm ▶ để bắt đầu trò chơi' : 'Bấm 👏 khi bé làm theo • Bấm ❌ nếu không'}
       </p>
+
+      <style>{`
+        @keyframes bounce {
+          from { transform: scale(1); }
+          to   { transform: scale(1.15); }
+        }
+      `}</style>
     </div>
   )
 }

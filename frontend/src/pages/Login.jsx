@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 
 export default function Login() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [username, setUsername]       = useState('')
+  const [password, setPassword]       = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const { login, loading, error } = useAuthStore()
   const navigate = useNavigate()
 
@@ -42,17 +43,32 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Mật khẩu
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Nhập mật khẩu..."
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-            />
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Mật khẩu
+              </label>
+              <Link to="/forgot-password"
+                className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline">
+                Quên mật khẩu?
+              </Link>
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="Nhập mật khẩu..."
+                required
+                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg"
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -70,9 +86,16 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Admin mặc định: <strong>admin</strong> / <strong>Admin@123456</strong>
+        <p className="text-center text-sm text-gray-500 mt-6">
+          Chưa có tài khoản?{' '}
+          <Link to="/register" className="text-indigo-600 hover:underline font-medium">
+            Đăng ký ngay
+          </Link>
         </p>
+
+        {/* <p className="text-center text-xs text-gray-400 mt-3">
+          Admin mặc định: <strong>admin</strong> / <strong>Admin@123456</strong>
+        </p> */}
       </div>
     </div>
   )

@@ -14,11 +14,29 @@ export default function Register() {
     username: '', password: '', confirm_password: '',
     full_name: '', email: '', phone: '', role: 'parent'
   })
+  const [showPassword, setShowPassword]         = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError]     = useState(null)
   const [success, setSuccess] = useState(false)
 
   const handleChange = e => setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+
+  // Kiểm tra độ mạnh mật khẩu
+  const getPasswordStrength = (pwd) => {
+    if (!pwd) return null
+    let score = 0
+    if (pwd.length >= 8)  score++
+    if (/[A-Z]/.test(pwd)) score++
+    if (/[0-9]/.test(pwd)) score++
+    if (/[^A-Za-z0-9]/.test(pwd)) score++
+    if (score <= 1) return { label: 'Yếu', color: '#ef4444', width: '25%' }
+    if (score === 2) return { label: 'Trung bình', color: '#f59e0b', width: '50%' }
+    if (score === 3) return { label: 'Khá', color: '#3b82f6', width: '75%' }
+    return { label: 'Mạnh', color: '#22c55e', width: '100%' }
+  }
+
+  const strength = getPasswordStrength(form.password)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -26,16 +44,20 @@ export default function Register() {
       setError('Mật khẩu xác nhận không khớp')
       return
     }
+    if (form.password.length < 8) {
+      setError('Mật khẩu phải có ít nhất 8 ký tự')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
       await api.post('/auth/register', {
-        username: form.username,
-        password: form.password,
+        username:  form.username,
+        password:  form.password,
         full_name: form.full_name,
-        email: form.email || null,
-        phone: form.phone || null,
-        role: form.role
+        email:     form.email  || null,
+        phone:     form.phone  || null,
+        role:      form.role
       })
       setSuccess(true)
       setTimeout(() => navigate('/login'), 2000)
@@ -85,19 +107,54 @@ export default function Register() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Mật khẩu *</label>
-              <input name="password" type="password" value={form.password} onChange={handleChange} required
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                placeholder="••••••••" />
+          {/* Mật khẩu */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Mật khẩu *</label>
+            <div className="relative">
+              <input name="password" type={showPassword ? 'text' : 'password'}
+                value={form.password} onChange={handleChange} required
+                className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Ít nhất 8 ký tự" />
+              <button type="button" onClick={() => setShowPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showPassword ? '🙈' : '👁️'}
+              </button>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Xác nhận mật khẩu *</label>
-              <input name="confirm_password" type="password" value={form.confirm_password} onChange={handleChange} required
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                placeholder="••••••••" />
+            {/* Thanh độ mạnh mật khẩu */}
+            {strength && (
+              <div className="mt-1.5">
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div style={{ width: strength.width, background: strength.color, height: '100%', transition: 'all 0.3s' }} />
+                </div>
+                <p className="text-xs mt-0.5" style={{ color: strength.color }}>
+                  Độ mạnh: {strength.label}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Xác nhận mật khẩu */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Xác nhận mật khẩu *</label>
+            <div className="relative">
+              <input name="confirm_password" type={showConfirmPassword ? 'text' : 'password'}
+                value={form.confirm_password} onChange={handleChange} required
+                className={`w-full px-3 py-2.5 pr-10 border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 ${
+                  form.confirm_password && form.password !== form.confirm_password
+                    ? 'border-red-300' : 'border-gray-300'
+                }`}
+                placeholder="Nhập lại mật khẩu" />
+              <button type="button" onClick={() => setShowConfirmPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                {showConfirmPassword ? '🙈' : '👁️'}
+              </button>
             </div>
+            {form.confirm_password && form.password !== form.confirm_password && (
+              <p className="text-xs text-red-500 mt-0.5">❌ Mật khẩu không khớp</p>
+            )}
+            {form.confirm_password && form.password === form.confirm_password && (
+              <p className="text-xs text-green-500 mt-0.5">✅ Mật khẩu khớp</p>
+            )}
           </div>
 
           <div>
@@ -124,7 +181,7 @@ export default function Register() {
             </select>
           </div>
 
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={loading || (form.confirm_password && form.password !== form.confirm_password)}
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white py-3 rounded-xl font-medium transition-colors">
             {loading ? '⏳ Đang đăng ký...' : '📝 Đăng ký'}
           </button>
