@@ -5,7 +5,7 @@ import uuid
 
 # ── AUTH ──────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
-    username: str
+    email: str
     password: str
 
 class TokenResponse(BaseModel):

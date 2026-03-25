@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 
 export default function Login() {
-  const [username, setUsername]       = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword]       = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const { login, loading, error } = useAuthStore()
@@ -11,7 +11,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    const ok = await login(username, password)
+    const ok = await login(email, password)
     if (ok) navigate('/dashboard')
   }
 
@@ -29,17 +29,15 @@ export default function Login() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tên đăng nhập
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={e => setUsername(e.target.value)}
-              placeholder="Nhập tên đăng nhập..."
-              required
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
-            />
+            <label>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="email@example.com"
+                required
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+              />
           </div>
 
           <div>
