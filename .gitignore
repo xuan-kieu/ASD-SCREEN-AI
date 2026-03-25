@@ -51,3 +51,16 @@ Thumbs.db
 # Cache
 *.log
 "@ | Set-Content "Y:\ASD-SCREEN-AI\.gitignore" -Encoding UTF8
+# Cache
+**/__pycache__/
+**/*.pyc
+
+# Env
+.env.production
+
+# SSL t? ký
+nginx/ssl/
+
+# Media uploads
+backend/media/*
+!backend/media/.gitkeep
