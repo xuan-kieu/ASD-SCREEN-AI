@@ -5,6 +5,8 @@ import useChildStore from '../store/childStore'
 export default function AddChild() {
   const navigate = useNavigate()
   const { addChild, loading, error } = useChildStore()
+  const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD
+
   const [form, setForm] = useState({
     full_name: '',
     birth_date: '',
@@ -14,13 +16,29 @@ export default function AddChild() {
     notes: ''
   })
   const [success, setSuccess] = useState(false)
+  const [dateError, setDateError] = useState('')
 
   const handleChange = (e) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+
+    // Validate ngày sinh realtime
+    if (name === 'birth_date') {
+      if (value > today) {
+        setDateError('Ngày sinh không được sau ngày hôm nay')
+      } else {
+        setDateError('')
+      }
+    }
+
+    setForm(prev => ({ ...prev, [name]: value }))
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (form.birth_date > today) {
+      setDateError('Ngày sinh không được sau ngày hôm nay')
+      return
+    }
     const result = await addChild(form)
     if (result.success) {
       setSuccess(true)
@@ -29,7 +47,7 @@ export default function AddChild() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-2xl mx-auto">
 
         {/* Back button */}
@@ -40,7 +58,7 @@ export default function AddChild() {
           ← Quay lại Dashboard
         </button>
 
-        <div className="bg-white rounded-2xl shadow-sm p-8">
+        <div className="bg-white rounded-2xl shadow-sm p-6 md:p-8">
           <h2 className="text-xl font-bold text-gray-800 mb-6">👶 Thêm trẻ mới</h2>
 
           {success && (
@@ -80,9 +98,15 @@ export default function AddChild() {
                   name="birth_date"
                   value={form.birth_date}
                   onChange={handleChange}
+                  max={today}
                   required
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm"
+                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm ${
+                    dateError ? 'border-red-400 bg-red-50' : 'border-gray-300'
+                  }`}
                 />
+                {dateError && (
+                  <p className="text-xs text-red-500 mt-1">❌ {dateError}</p>
+                )}
               </div>
 
               <div>
@@ -134,7 +158,7 @@ export default function AddChild() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !!dateError}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white py-3 rounded-xl transition-colors text-sm font-medium"
               >
                 {loading ? '⏳ Đang lưu...' : '💾 Lưu thông tin'}

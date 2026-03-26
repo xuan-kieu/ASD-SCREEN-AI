@@ -36,12 +36,28 @@ def get_children(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if current_user.role == "parent":
-        children = db.query(Child).filter(Child.parent_id == current_user.id).all()
-    elif current_user.role in ("admin", "specialist", "teacher"):
+    if current_user.role == "admin":
+        # Admin xem tất cả
         children = db.query(Child).all()
+
+    elif current_user.role == "specialist":
+        # Specialist chỉ xem trẻ được phân công (assigned_to = current_user.id)
+        children = db.query(Child).filter(Child.assigned_to == current_user.id).all()
+
+    elif current_user.role == "teacher":
+        # Teacher chỉ xem trẻ do mình tạo hoặc được phân công
+        children = db.query(Child).filter(
+            (Child.created_by == current_user.id) |
+            (Child.assigned_to == current_user.id)
+        ).all()
+
+    elif current_user.role == "parent":
+        # Parent chỉ xem con của mình
+        children = db.query(Child).filter(Child.parent_id == current_user.id).all()
+
     else:
         children = []
+
     return [child_to_dict(c) for c in children]
 
 
@@ -51,6 +67,10 @@ def create_child(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Validate ngày sinh không được sau hôm nay
+    if data.birth_date > date.today():
+        raise HTTPException(status_code=400, detail="Ngày sinh không được sau ngày hôm nay")
+
     new_id     = str(uuid.uuid4())
     parent_id  = str(current_user.id) if current_user.role == "parent" else None
     created_by = str(current_user.id)
@@ -86,10 +106,20 @@ def get_child(
     child = db.query(Child).filter(Child.id == child_id).first()
     if not child:
         raise HTTPException(status_code=404, detail="Không tìm thấy trẻ")
+
+    # Kiểm tra quyền xem
+    uid = str(current_user.id)
+    role = current_user.role
+    if role == "parent" and str(child.parent_id) != uid:
+        raise HTTPException(status_code=403, detail="Không có quyền xem")
+    if role in ("specialist", "teacher") and \
+       str(getattr(child, 'assigned_to', None)) != uid and \
+       str(getattr(child, 'created_by', None)) != uid:
+        raise HTTPException(status_code=403, detail="Không có quyền xem")
+
     return child_to_dict(child)
 
 
-# ─── MỚI: Sửa thông tin trẻ ────────────────────────────────────────────────
 @router.put("/{child_id}", response_model=ChildResponse)
 def update_child(
     child_id: str,
@@ -101,9 +131,17 @@ def update_child(
     if not child:
         raise HTTPException(status_code=404, detail="Không tìm thấy trẻ")
 
-    # Chỉ admin/specialist/teacher hoặc parent sở hữu mới được sửa
     if current_user.role == "parent" and str(child.parent_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Không có quyền sửa")
+
+    # Validate ngày sinh nếu có cập nhật
+    if data.get("birth_date"):
+        from datetime import datetime
+        bd = data["birth_date"]
+        if isinstance(bd, str):
+            bd = datetime.strptime(bd, "%Y-%m-%d").date()
+        if bd > date.today():
+            raise HTTPException(status_code=400, detail="Ngày sinh không được sau ngày hôm nay")
 
     db.execute(text("""
         UPDATE children SET

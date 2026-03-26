@@ -7,7 +7,7 @@ from sqlalchemy import text
 from app.utils.deps import get_db, get_current_user
 from pydantic import BaseModel
 from typing import Optional, List
-import uuid, json
+import uuid
 from datetime import datetime, date
 
 router = APIRouter(tags=["Appointments"])
@@ -40,18 +40,14 @@ class AppointmentAction(BaseModel):
 # ── Helper ─────────────────────────────────────────────────────────────────
 
 def _notify_telegram(message: str):
-    """Gọi Telegram bot để gửi thông báo — import lazy để tránh circular"""
     try:
-        import requests, os
-        token = os.getenv("TELEGRAM_BOT_TOKEN")
-        # Lấy tất cả chat_id từ DB không dùng được ở đây vì không có db session
-        # Telegram bot sẽ tự poll và xử lý — chỉ log ở đây
+        import os
         print(f"[APPOINTMENT NOTIFY] {message}")
     except Exception:
         pass
 
 
-# ── SPECIALIST: Quản lý slot ───────────────────────────────────────────────
+# ── SPECIALIST/ADMIN: Quản lý slot ────────────────────────────────────────
 
 @router.post("/slots", summary="Chuyên gia tạo khung giờ rảnh")
 def create_slots(
@@ -161,18 +157,19 @@ def get_my_slots(
     return [dict(r) for r in rows]
 
 
-# ── PARENT: Đặt lịch hẹn ──────────────────────────────────────────────────
+# ── ĐẶT LỊCH: Admin, Specialist, Teacher, Parent đều được ─────────────────
 
-@router.post("", summary="Phụ huynh đặt lịch hẹn")
+@router.post("", summary="Đặt lịch hẹn")
 def create_appointment(
     data: AppointmentCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    if current_user.role not in ("parent", "teacher", "admin"):
+    # Tất cả role đều được đặt lịch
+    if current_user.role not in ("parent", "teacher", "specialist", "admin"):
         raise HTTPException(403, "Không có quyền đặt lịch")
 
-    # Kiểm tra slot còn trống không
+    # Specialist không được đặt lịch của chính mình
     slot = db.execute(
         text("SELECT * FROM specialist_slots WHERE id = :id AND is_available = 1"),
         {"id": data.slot_id}
@@ -180,7 +177,11 @@ def create_appointment(
     if not slot:
         raise HTTPException(400, "Slot không tồn tại hoặc đã bị đặt")
 
-    # Kiểm tra parent chưa đặt slot này rồi
+    if current_user.role == "specialist" and \
+       str(slot["specialist_id"]) == str(current_user.id):
+        raise HTTPException(400, "Không thể đặt lịch cho slot của chính mình")
+
+    # Kiểm tra chưa đặt slot này rồi
     existing = db.execute(
         text("SELECT id FROM appointments WHERE slot_id = :slot_id AND parent_id = :parent_id"),
         {"slot_id": data.slot_id, "parent_id": str(current_user.id)}
@@ -209,21 +210,19 @@ def create_appointment(
         "now": now,
     })
 
-    # Đánh dấu slot là không còn available
     db.execute(
         text("UPDATE specialist_slots SET is_available = 0 WHERE id = :id"),
         {"id": data.slot_id}
     )
     db.commit()
 
-    # Lấy tên chuyên gia và phụ huynh để thông báo
     specialist = db.execute(
         text("SELECT full_name FROM users WHERE id = :id"),
         {"id": str(slot["specialist_id"])}
     ).mappings().fetchone()
     _notify_telegram(
         f"📅 Lịch hẹn mới!\n"
-        f"Phụ huynh: {current_user.full_name}\n"
+        f"Người đặt: {current_user.full_name} ({current_user.role})\n"
         f"Chuyên gia: {specialist['full_name'] if specialist else ''}\n"
         f"Ngày: {slot['slot_date']} {slot['start_time']}–{slot['end_time']}\n"
         f"Lý do: {data.reason or 'Không ghi rõ'}"
@@ -232,7 +231,7 @@ def create_appointment(
     return {"id": appt_id, "status": "pending", "message": "Đặt lịch thành công, chờ chuyên gia xác nhận"}
 
 
-# ── SPECIALIST/PARENT: Xem lịch hẹn ───────────────────────────────────────
+# ── XEM LỊCH HẸN: Mỗi role chỉ xem của mình ──────────────────────────────
 
 @router.get("/my", summary="Xem lịch hẹn của tôi")
 def get_my_appointments(
@@ -243,10 +242,8 @@ def get_my_appointments(
     role = current_user.role
     uid = str(current_user.id)
 
-    if role in ("specialist",):
-        filter_col = "a.specialist_id"
-    else:
-        filter_col = "a.parent_id"
+    # Specialist xem theo specialist_id, các role khác xem theo parent_id
+    filter_col = "a.specialist_id" if role == "specialist" else "a.parent_id"
 
     query = f"""
         SELECT
@@ -284,8 +281,8 @@ def get_appointment(
             a.id, a.status, a.reason, a.reject_reason, a.specialist_notes,
             a.created_at, a.updated_at,
             s.slot_date, s.start_time, s.end_time, s.location,
-            sp.full_name AS specialist_name,
-            p.full_name AS parent_name,
+            sp.full_name AS specialist_name, sp.id AS specialist_id,
+            p.full_name AS parent_name, p.id AS parent_id,
             c.full_name AS child_name
         FROM appointments a
         JOIN specialist_slots s ON s.id = a.slot_id
@@ -307,9 +304,9 @@ def get_appointment(
     return dict(row)
 
 
-# ── SPECIALIST: Duyệt / Từ chối / Hoàn thành ──────────────────────────────
+# ── SPECIALIST/ADMIN: Duyệt / Từ chối / Hoàn thành ────────────────────────
 
-@router.patch("/{appt_id}/action", summary="Chuyên gia duyệt/từ chối/hoàn thành")
+@router.patch("/{appt_id}/action", summary="Duyệt/từ chối/hoàn thành lịch hẹn")
 def appointment_action(
     appt_id: str,
     data: AppointmentAction,
@@ -327,17 +324,13 @@ def appointment_action(
     uid = str(current_user.id)
     role = current_user.role
 
-    # Chuyên gia chỉ được thao tác với lịch của mình
     if role == "specialist" and str(appt["specialist_id"]) != uid:
         raise HTTPException(403, "Không phải lịch hẹn của bạn")
-
-    # Phụ huynh chỉ được cancel
-    if role == "parent" and data.action != "cancel":
-        raise HTTPException(403, "Phụ huynh chỉ có thể hủy lịch")
-    if role == "parent" and str(appt["parent_id"]) != uid:
+    if role in ("parent", "teacher") and data.action != "cancel":
+        raise HTTPException(403, "Chỉ có thể hủy lịch")
+    if role in ("parent", "teacher") and str(appt["parent_id"]) != uid:
         raise HTTPException(403, "Không phải lịch của bạn")
 
-    # Kiểm tra transition hợp lệ
     valid_transitions = {
         "confirm":  ["pending"],
         "reject":   ["pending"],
@@ -372,7 +365,6 @@ def appointment_action(
         "id": appt_id,
     })
 
-    # Nếu từ chối hoặc hủy → mở lại slot
     if data.action in ("reject", "cancel"):
         db.execute(
             text("UPDATE specialist_slots SET is_available = 1 WHERE id = :id"),
@@ -380,27 +372,6 @@ def appointment_action(
         )
 
     db.commit()
-
-    # Lấy thông tin để notify
-    slot = db.execute(
-        text("SELECT slot_date, start_time, end_time FROM specialist_slots WHERE id = :id"),
-        {"id": str(appt["slot_id"])}
-    ).mappings().fetchone()
-
-    parent = db.execute(
-        text("SELECT full_name FROM users WHERE id = :id"),
-        {"id": str(appt["parent_id"])}
-    ).mappings().fetchone()
-
-    action_vi = {"confirmed": "✅ Xác nhận", "rejected": "❌ Từ chối",
-                 "completed": "🏁 Hoàn thành", "cancelled": "🚫 Hủy"}
-    _notify_telegram(
-        f"{action_vi.get(new_status, new_status)} lịch hẹn\n"
-        f"Phụ huynh: {parent['full_name'] if parent else ''}\n"
-        f"Ngày: {slot['slot_date']} {slot['start_time']}–{slot['end_time']}\n"
-        + (f"Lý do từ chối: {data.reject_reason}" if data.reject_reason else "")
-    )
-
     return {"id": appt_id, "status": new_status}
 
 
@@ -436,4 +407,3 @@ def get_all_appointments(
 
     rows = db.execute(text(query), params).mappings().fetchall()
     return [dict(r) for r in rows]
-
