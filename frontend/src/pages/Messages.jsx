@@ -49,8 +49,9 @@ export default function Messages() {
   const connectWS = useCallback(() => {
     if (!token || !mountedRef.current) return
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const wsUrl      = `${wsProtocol}://${window.location.host}/api/ws/messages?token=${token}`
+    const wsBase = import.meta.env.VITE_WS_URL || 
+  `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
+    const wsUrl  = `${wsBase}/ws/messages?token=${token}`
     const ws         = new WebSocket(wsUrl)
     wsRef.current    = ws
 
