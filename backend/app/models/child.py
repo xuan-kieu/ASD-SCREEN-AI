@@ -15,5 +15,6 @@ class Child(Base):
     notes            = Column(Text)
     parent_id        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     created_by       = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    assigned_to      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))  # specialist được phân công
     created_at       = Column(DateTime(timezone=True), server_default=func.now())
     updated_at       = Column(DateTime(timezone=True), server_default=func.now())
