@@ -9,11 +9,8 @@ from app.utils.security import decode_token
 router = APIRouter()
 
 
-# ── Connection Manager ─────────────────────────────────────────────────────
-
 class ConnectionManager:
     def __init__(self):
-        # username -> list of WebSocket (hỗ trợ nhiều tab cùng lúc)
         self.active: Dict[str, List[WebSocket]] = {}
 
     async def connect(self, username: str, ws: WebSocket):
@@ -21,12 +18,14 @@ class ConnectionManager:
         if username not in self.active:
             self.active[username] = []
         self.active[username].append(ws)
+        print(f"[WS] Connected: {username} (total: {sum(len(v) for v in self.active.values())})")
 
     def disconnect(self, username: str, ws: WebSocket):
         if username in self.active:
             self.active[username] = [c for c in self.active[username] if c != ws]
             if not self.active[username]:
                 del self.active[username]
+        print(f"[WS] Disconnected: {username}")
 
     async def send_to_user(self, username: str, data: dict):
         if username not in self.active:
@@ -47,16 +46,11 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-# ── WebSocket Endpoint ─────────────────────────────────────────────────────
-
 @router.websocket("/ws/messages")
 async def websocket_messages(
     websocket: WebSocket,
     token: str = Query(...)
 ):
-    """
-    Client kết nối: wss://host/api/ws/messages?token=<access_token>
-    """
     payload = decode_token(token)
     if not payload or payload.get("type") == "refresh":
         await websocket.close(code=4001)
@@ -69,9 +63,10 @@ async def websocket_messages(
 
     await manager.connect(username, websocket)
 
+    # Gửi ping mỗi 20 giây để giữ kết nối qua Railway proxy
     async def ping_loop():
         while True:
-            await asyncio.sleep(25)
+            await asyncio.sleep(20)
             try:
                 await websocket.send_json({"type": "ping"})
             except Exception:
@@ -81,14 +76,20 @@ async def websocket_messages(
 
     try:
         while True:
-            data = await websocket.receive_text()
             try:
-                msg = json.loads(data)
-                # client gửi pong để keepalive
-                if msg.get("type") == "pong":
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=60)
+                try:
+                    msg = json.loads(data)
+                    if msg.get("type") == "pong":
+                        pass  # keepalive OK
+                except Exception:
                     pass
-            except Exception:
-                pass
+            except asyncio.TimeoutError:
+                # Gửi ping nếu không có activity
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except Exception:
+                    break
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -98,17 +99,13 @@ async def websocket_messages(
         manager.disconnect(username, websocket)
 
 
-# ── Helpers gọi từ messages.py ────────────────────────────────────────────
-
 async def notify_new_message(to_username: str, message_data: dict):
-    """Gọi sau INSERT message để push real-time cho người nhận"""
     await manager.send_to_user(to_username, {
         "type": "new_message",
         "data": message_data
     })
 
 async def notify_message_read(from_username: str, message_id: str):
-    """Notify người gửi biết tin đã được đọc"""
     await manager.send_to_user(from_username, {
         "type": "message_read",
         "data": {"message_id": message_id}

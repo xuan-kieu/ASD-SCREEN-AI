@@ -201,3 +201,17 @@ def reset_password(data: ResetPasswordRequest, db: Session = Depends(get_db)):
     r.delete(f"otp:{data.email}")
     r.delete(f"otp_verified:{data.email}")
     return {"message": "Đặt lại mật khẩu thành công"}
+
+class UpdateProfileRequest(BaseModel):
+    city: Optional[str] = None
+
+@router.patch("/update-profile")
+def update_profile(
+    req: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if req.city is not None:
+        current_user.city = req.city
+    db.commit()
+    return {"message": "Cập nhật thành công"}
