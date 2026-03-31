@@ -45,10 +45,43 @@ export default function Admin() {
   const [assignFilter, setAssignFilter] = useState('all') // 'all' | 'unassigned'
   const [cityFilter, setCityFilter]     = useState('')
 
-  // Hàm chuẩn hóa chuỗi: loại bỏ khoảng trắng đầu cuối và khoảng trắng thừa ở giữa
-  const normalizeString = (str) => {
+  // Hàm chuẩn hóa địa danh (xử lý các biến thể tên thành phố)
+  const normalizeCity = (str) => {
     if (!str) return ''
-    return str.trim().replace(/\s+/g, ' ')
+    
+    // Loại bỏ khoảng trắng thừa
+    let normalized = str.trim().replace(/\s+/g, ' ')
+    
+    // Loại bỏ dấu chấm viết tắt
+    normalized = normalized.replace(/\./g, '')
+    
+    // Chuyển về chữ thường và bỏ dấu cách đầu cuối
+    normalized = normalized.toLowerCase().trim()
+    
+    // Xử lý các biến thể của thành phố
+    const cityVariants = {
+      'hanoi': ['ha noi', 'hà nội', 'hn', 'hà nội', 'hà nội'],
+      'ho chi minh': ['tp ho chi minh', 'tphcm', 'thanh pho ho chi minh', 'hồ chí minh', 'hcm', 'tp.hcm', 'tp hcm', 'ho chi minh', 'saigon', 'sài gòn'],
+      'danang': ['da nang', 'đà nẵng', 'dn', 'da nang', 'đà nẵng'],
+      'haiphong': ['hai phong', 'hải phòng', 'hp', 'hai phong', 'hải phòng'],
+      'cantho': ['can tho', 'cần thơ', 'ct', 'can tho', 'cần thơ'],
+      'binhduong': ['binh duong', 'bình dương', 'bd', 'binh duong', 'bình dương'],
+      'dongnai': ['dong nai', 'đồng nai', 'dnai', 'dong nai', 'đồng nai'],
+      'longan': ['long an', 'long an', 'la'],
+      'baria vungtau': ['ba ria vung tau', 'bà rịa vũng tàu', 'brvt', 'vung tau', 'vũng tàu'],
+      'hue': ['huế', 'hue', 'thua thien hue', 'thừa thiên huế'],
+      'nhatrang': ['nha trang', 'nha trang', 'nt', 'nha trang'],
+      'dalat': ['da lat', 'đà lạt', 'dl', 'da lat', 'đà lạt'],
+    }
+    
+    // Kiểm tra và chuẩn hóa về tên chuẩn
+    for (const [standard, variants] of Object.entries(cityVariants)) {
+      if (variants.includes(normalized) || normalized === standard) {
+        return standard
+      }
+    }
+    
+    return normalized
   }
 
   useEffect(() => {
@@ -119,18 +152,18 @@ export default function Admin() {
   // Hàm so sánh 2 thành phố sau khi chuẩn hóa
   const isSameCity = (specialistCity, childRegion) => {
     if (!specialistCity || !childRegion) return false
-    return normalizeString(specialistCity) === normalizeString(childRegion)
+    return normalizeCity(specialistCity) === normalizeCity(childRegion)
   }
 
   // Sắp xếp specialist: cùng thành phố với trẻ lên đầu
   const getSortedSpecialists = (childRegion) => {
     if (!childRegion) return specialists
     
-    const normalizedChildRegion = normalizeString(childRegion)
+    const normalizedChildRegion = normalizeCity(childRegion)
     
     return [...specialists].sort((a, b) => {
-      const aMatch = a.city && normalizeString(a.city) === normalizedChildRegion
-      const bMatch = b.city && normalizeString(b.city) === normalizedChildRegion
+      const aMatch = a.city && normalizeCity(a.city) === normalizedChildRegion
+      const bMatch = b.city && normalizeCity(b.city) === normalizedChildRegion
       if (aMatch && !bMatch) return -1
       if (!aMatch && bMatch) return 1
       return 0
@@ -140,7 +173,7 @@ export default function Admin() {
   // Filter danh sách trẻ trong tab phân công
   const filteredChildren = children.filter(c => {
     if (assignFilter === 'unassigned' && c.specialist_id) return false
-    if (cityFilter && c.region && !normalizeString(c.region).toLowerCase().includes(normalizeString(cityFilter).toLowerCase())) return false
+    if (cityFilter && c.region && !normalizeCity(c.region).includes(normalizeCity(cityFilter))) return false
     return true
   })
 
@@ -270,7 +303,7 @@ export default function Admin() {
                     {['Họ và tên', 'Vai trò', 'Email', 'Thành phố', 'Trạng thái', 'Hành động'].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155' }}>{h}</th>
                     ))}
-                   </tr>
+                    </tr>
                 </thead>
                 <tbody>
                   {users.map((u, i) => {
@@ -435,7 +468,7 @@ export default function Admin() {
                     {['Tên trẻ', 'Khu vực', 'Phụ huynh', 'Giáo viên', 'Chuyên gia phụ trách', 'Thao tác'].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155' }}>{h}</th>
                     ))}
-                   </tr>
+                  </tr>
                 </thead>
                 <tbody>
                   {filteredChildren.length === 0 ? (
