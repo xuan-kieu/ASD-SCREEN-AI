@@ -45,6 +45,12 @@ export default function Admin() {
   const [assignFilter, setAssignFilter] = useState('all') // 'all' | 'unassigned'
   const [cityFilter, setCityFilter]     = useState('')
 
+  // Hàm chuẩn hóa chuỗi: loại bỏ khoảng trắng đầu cuối và khoảng trắng thừa ở giữa
+  const normalizeString = (str) => {
+    if (!str) return ''
+    return str.trim().replace(/\s+/g, ' ')
+  }
+
   useEffect(() => {
     if (user?.role !== 'admin') { navigate('/dashboard'); return }
     loadData()
@@ -110,28 +116,31 @@ export default function Admin() {
 
   const specialists = users.filter(u => u.role === 'specialist' && u.is_active)
 
+  // Hàm so sánh 2 thành phố sau khi chuẩn hóa
+  const isSameCity = (specialistCity, childRegion) => {
+    if (!specialistCity || !childRegion) return false
+    return normalizeString(specialistCity) === normalizeString(childRegion)
+  }
+
   // Sắp xếp specialist: cùng thành phố với trẻ lên đầu
   const getSortedSpecialists = (childRegion) => {
     if (!childRegion) return specialists
+    
+    const normalizedChildRegion = normalizeString(childRegion)
+    
     return [...specialists].sort((a, b) => {
-      const aMatch = a.city && childRegion.toLowerCase().includes(a.city.toLowerCase())
-      const bMatch = b.city && childRegion.toLowerCase().includes(b.city.toLowerCase())
+      const aMatch = a.city && normalizeString(a.city) === normalizedChildRegion
+      const bMatch = b.city && normalizeString(b.city) === normalizedChildRegion
       if (aMatch && !bMatch) return -1
       if (!aMatch && bMatch) return 1
       return 0
     })
   }
 
-  const isSameCity = (specialistCity, childRegion) => {
-    if (!specialistCity || !childRegion) return false
-    return childRegion.toLowerCase().includes(specialistCity.toLowerCase()) ||
-           specialistCity.toLowerCase().includes(childRegion.toLowerCase())
-  }
-
   // Filter danh sách trẻ trong tab phân công
   const filteredChildren = children.filter(c => {
     if (assignFilter === 'unassigned' && c.specialist_id) return false
-    if (cityFilter && c.region && !c.region.toLowerCase().includes(cityFilter.toLowerCase())) return false
+    if (cityFilter && c.region && !normalizeString(c.region).toLowerCase().includes(normalizeString(cityFilter).toLowerCase())) return false
     return true
   })
 
@@ -261,7 +270,7 @@ export default function Admin() {
                     {['Họ và tên', 'Vai trò', 'Email', 'Thành phố', 'Trạng thái', 'Hành động'].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155' }}>{h}</th>
                     ))}
-                  </tr>
+                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u, i) => {
@@ -426,7 +435,7 @@ export default function Admin() {
                     {['Tên trẻ', 'Khu vực', 'Phụ huynh', 'Giáo viên', 'Chuyên gia phụ trách', 'Thao tác'].map(h => (
                       <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155' }}>{h}</th>
                     ))}
-                  </tr>
+                   </tr>
                 </thead>
                 <tbody>
                   {filteredChildren.length === 0 ? (
