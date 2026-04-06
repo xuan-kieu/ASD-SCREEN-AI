@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.database import get_db
@@ -164,7 +164,7 @@ class ResetPasswordRequest(BaseModel):
 
 
 @router.post("/forgot-password")
-def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(data: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Bước 1 — Gửi OTP về email"""
     user = db.query(User).filter(User.email == data.email).first()
     # Luôn trả về success để tránh email enumeration attack
@@ -173,7 +173,9 @@ def forgot_password(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
         r   = _get_redis()
         if r:
             r.setex(f"otp:{data.email}", 600, otp)  # TTL 10 phút
-        _send_otp_email(data.email, otp, user.full_name)
+        background_tasks.add_task(          # ← gửi nền, không block
+            _send_otp_email, data.email, otp, user.full_name
+        )
     return {"message": "Nếu email tồn tại, mã xác nhận đã được gửi"}
 
 

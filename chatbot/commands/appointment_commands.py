@@ -112,7 +112,7 @@ async def cmd_available_slots(update: Update, context: ContextTypes.DEFAULT_TYPE
                 u.full_name AS specialist_name
             FROM specialist_slots s
             JOIN users u ON u.id = s.specialist_id
-            WHERE s.is_available = 1
+            WHERE s.is_available = true
               AND s.slot_date >= CAST(GETUTCDATE() AS DATE)
             ORDER BY s.slot_date, s.start_time
         """)).mappings().fetchall()
@@ -230,7 +230,7 @@ async def callback_appointment_action(update: Update, context: ContextTypes.DEFA
 
         if action == 'reject':
             db.execute(
-                text("UPDATE specialist_slots SET is_available = 1 WHERE id = :id"),
+                text("UPDATE specialist_slots SET is_available = true WHERE id = :id"),
                 {"id": str(appt['slot_id'])}
             )
 

@@ -72,11 +72,9 @@ def delete_user(
     return {"message": "Đã xóa user"}
 
 
+# backend/app/routers/admin.py
 @router.get("/stats")
-def get_stats(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
+def get_stats(db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     rows = db.execute(text("""
         SELECT
             (SELECT COUNT(*) FROM users)       AS total_users,
@@ -84,7 +82,8 @@ def get_stats(
             (SELECT COUNT(*) FROM assessments) AS total_assessments,
             (SELECT COUNT(*) FROM assessments WHERE status = 'completed') AS completed,
             (SELECT COUNT(*) FROM assessments WHERE risk_level = 'RẤT CAO') AS very_high_risk,
-            (SELECT COUNT(*) FROM assessments WHERE risk_level = 'CAO')     AS high_risk
+            (SELECT COUNT(*) FROM assessments WHERE risk_level = 'CAO')     AS high_risk,
+            (SELECT COUNT(*) FROM children WHERE assigned_to IS NULL)       AS unassigned
     """)).fetchone()
 
     return {
@@ -94,6 +93,7 @@ def get_stats(
         "completed":         rows[3],
         "very_high_risk":    rows[4],
         "high_risk":         rows[5],
+        "unassigned":        rows[6],
     }
 
 # ── Thêm endpoint xem lịch sử chuyển giao ────────────────────────────────────
