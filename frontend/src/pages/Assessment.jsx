@@ -5,6 +5,7 @@ import CameraAI from '../components/CameraAI'
 import DeviceCheck from '../components/DeviceCheck'
 import AudioIndicator from '../components/AudioIndicator'
 import useAudio from '../hooks/useAudio'
+import ConsentForm from '../components/ConsentForm'
 
 const gameComponents = {
   'GATEWAY_BALLOON':  lazy(() => import('../components/games/GW_Balloon')),
@@ -56,14 +57,26 @@ function getAgeGroup(months) {
   return '36-60'
 }
 
-const PHASE = { SETUP: 'setup', DEVICE_CHECK: 'device_check', GATEWAY: 'gateway', GATEWAY_RESULT: 'gateway_result', MAIN_GAMES: 'main_games', DONE: 'done' }
+// ── Thêm CONSENT vào đầu luồng ──────────────────────────────
+const PHASE = {
+  CONSENT:        'consent',
+  SETUP:          'setup',
+  DEVICE_CHECK:   'device_check',
+  GATEWAY:        'gateway',
+  GATEWAY_RESULT: 'gateway_result',
+  MAIN_GAMES:     'main_games',
+  DONE:           'done',
+}
 
 export default function Assessment() {
   const { id: assessmentId } = useParams()
   const navigate  = useNavigate()
   const location  = useLocation()
 
-  const [phase, setPhase]         = useState(PHASE.SETUP)
+  // ── Bắt đầu từ CONSENT ──────────────────────────────────────
+  const [phase, setPhase]         = useState(PHASE.CONSENT)
+  const [consentRecord, setConsentRecord] = useState(null)
+
   const [childName, setChildName] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [ageMonths, setAgeMonths] = useState(0)
@@ -80,20 +93,10 @@ export default function Assessment() {
 
   const [timeElapsed, setTimeElapsed]   = useState(0)
   const [gameDuration, setGameDuration] = useState(120)
-
-  // Camera AI
   const [cameraEnabled, setCameraEnabled] = useState(true)
-
-  // Audio AI — thu âm trong khi chơi game
   const [currentGameSessionId, setCurrentGameSessionId] = useState(null)
 
-  const {
-    isRecording,
-    audioResult,
-    startRecording,
-    stopRecording,
-    error: audioError,
-  } = useAudio({
+  const { isRecording, audioResult, startRecording, stopRecording, error: audioError } = useAudio({
     gameSessionId: currentGameSessionId,
     gameCode: phase === 'gateway' ? GATEWAY_SEQUENCE[gatewayIdx]?.code : gameSequence[gameIdx],
     enabled: true,
@@ -103,8 +106,7 @@ export default function Assessment() {
   const featuresBuffer  = useRef([])
   const latestAIResult  = useRef(null)
 
-  // Refs để tránh closure bug trong timer callbacks
-  const phaseRef         = useRef(PHASE.SETUP)
+  const phaseRef         = useRef(PHASE.CONSENT)
   const gatewayIdxRef    = useRef(0)
   const gatewayScoresRef = useRef([])
   const gameIdxRef       = useRef(0)
@@ -112,13 +114,13 @@ export default function Assessment() {
   const gameModeRef      = useRef('full')
   const ageGroupRef      = useRef('12-18')
 
-  useEffect(() => { phaseRef.current        = phase        }, [phase])
-  useEffect(() => { gatewayIdxRef.current   = gatewayIdx   }, [gatewayIdx])
-  useEffect(() => { gatewayScoresRef.current = gatewayScores }, [gatewayScores])
-  useEffect(() => { gameIdxRef.current      = gameIdx      }, [gameIdx])
-  useEffect(() => { gameSequenceRef.current = gameSequence }, [gameSequence])
-  useEffect(() => { gameModeRef.current     = gameMode     }, [gameMode])
-  useEffect(() => { ageGroupRef.current     = ageGroup     }, [ageGroup])
+  useEffect(() => { phaseRef.current         = phase        }, [phase])
+  useEffect(() => { gatewayIdxRef.current    = gatewayIdx   }, [gatewayIdx])
+  useEffect(() => { gatewayScoresRef.current = gatewayScores}, [gatewayScores])
+  useEffect(() => { gameIdxRef.current       = gameIdx      }, [gameIdx])
+  useEffect(() => { gameSequenceRef.current  = gameSequence }, [gameSequence])
+  useEffect(() => { gameModeRef.current      = gameMode     }, [gameMode])
+  useEffect(() => { ageGroupRef.current      = ageGroup     }, [ageGroup])
 
   useEffect(() => {
     if (location.state?.childName) setChildName(location.state.childName)
@@ -133,11 +135,7 @@ export default function Assessment() {
     if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       setTimeElapsed(prev => {
-        if (prev >= duration) {
-          clearInterval(timerRef.current)
-          handleTimeUp()
-          return prev
-        }
+        if (prev >= duration) { clearInterval(timerRef.current); handleTimeUp(); return prev }
         return prev + 1
       })
     }, 1000)
@@ -156,77 +154,57 @@ export default function Assessment() {
     featuresBuffer.current = []
     try {
       const res = await api.post(`/assessments/${assessmentId}/features`, { game_code: gameCode, features: toSend })
-      // Lưu session_id để audio biết gắn vào đâu
       if (res.data?.session_id) setCurrentGameSessionId(res.data.session_id)
     } catch (e) {}
   }
 
   const handleTimeUp = useCallback(() => {
     const currentPhase = phaseRef.current
-    if (currentPhase === PHASE.GATEWAY)         handleGatewayNextRef(false)
+    if (currentPhase === PHASE.GATEWAY)       handleGatewayNextRef(false)
     else if (currentPhase === PHASE.MAIN_GAMES) handleMainGameNextRef()
   }, [])
 
   const handleGatewayNextRef = useCallback(async (passed) => {
-    stopTimer()
-    stopRecording()
+    stopTimer(); stopRecording()
     const idx       = gatewayIdxRef.current
     const scores    = gatewayScoresRef.current
     const current   = GATEWAY_SEQUENCE[idx]
     const newScores = [...scores, { code: current.code, passed }]
-
     setGatewayScores(newScores)
     gatewayScoresRef.current = newScores
     setGatewayRunning(false)
     await flushFeatures(current.code)
-
     if (idx < GATEWAY_SEQUENCE.length - 1) {
-      setGatewayIdx(idx + 1)
-      gatewayIdxRef.current = idx + 1
-      setTimeElapsed(0)
+      setGatewayIdx(idx + 1); gatewayIdxRef.current = idx + 1; setTimeElapsed(0)
     } else {
       const passCount = newScores.filter(s => s.passed).length
       const mode = passCount >= 2 ? 'full' : 'short'
-      setGameMode(mode)
-      gameModeRef.current = mode
-      setPhase(PHASE.GATEWAY_RESULT)
-      phaseRef.current = PHASE.GATEWAY_RESULT
+      setGameMode(mode); gameModeRef.current = mode
+      setPhase(PHASE.GATEWAY_RESULT); phaseRef.current = PHASE.GATEWAY_RESULT
     }
   }, [assessmentId])
 
   const handleMainGameNextRef = useCallback(async () => {
-    stopTimer()
-    stopRecording()
-    setGameRunning(false)
-    const idx      = gameIdxRef.current
-    const sequence = gameSequenceRef.current
+    stopTimer(); stopRecording(); setGameRunning(false)
+    const idx = gameIdxRef.current; const sequence = gameSequenceRef.current
     await flushFeatures(sequence[idx])
-
     if (idx < sequence.length - 1) {
-      setGameIdx(idx + 1)
-      gameIdxRef.current = idx + 1
-      setTimeElapsed(0)
+      setGameIdx(idx + 1); gameIdxRef.current = idx + 1; setTimeElapsed(0)
     } else {
       try { await api.patch(`/assessments/${assessmentId}/complete`) } catch (e) {}
-      setPhase(PHASE.DONE)
-      phaseRef.current = PHASE.DONE
+      setPhase(PHASE.DONE); phaseRef.current = PHASE.DONE
     }
   }, [assessmentId])
 
-  const handleGatewayNext = handleGatewayNextRef
+  const handleGatewayNext  = handleGatewayNextRef
   const handleMainGameNext = handleMainGameNextRef
 
   const handleSetup = () => {
     if (!childName.trim() || !birthDate) return
-    const months = getAgeMonths(birthDate)
-    const group  = getAgeGroup(months)
-    setAgeMonths(months)
-    setAgeGroup(group)
-    ageGroupRef.current = group
-    setPhase(PHASE.DEVICE_CHECK)
-    phaseRef.current = PHASE.DEVICE_CHECK
-    setGatewayIdx(0)
-    gatewayIdxRef.current = 0
+    const months = getAgeMonths(birthDate); const group = getAgeGroup(months)
+    setAgeMonths(months); setAgeGroup(group); ageGroupRef.current = group
+    setPhase(PHASE.DEVICE_CHECK); phaseRef.current = PHASE.DEVICE_CHECK
+    setGatewayIdx(0); gatewayIdxRef.current = 0
   }
 
   const startGateway = () => {
@@ -238,24 +216,12 @@ export default function Assessment() {
   const handleGatewayScore = (score) => { handleGatewayNext(score >= 60) }
 
   const handleStartMainGames = () => {
-    const config   = AGE_GROUP_GAMES[ageGroupRef.current]
+    const config = AGE_GROUP_GAMES[ageGroupRef.current]
     const sequence = gameModeRef.current === 'full' ? config.full : config.short
     const duration = config.duration[gameModeRef.current]
-    setGameSequence(sequence)
-    gameSequenceRef.current = sequence
-    setGameDuration(duration)
-    setGameIdx(0)
-    gameIdxRef.current = 0
-    setGameRunning(false)
-    setPhase(PHASE.MAIN_GAMES)
-    phaseRef.current = PHASE.MAIN_GAMES
-  }
-
-  const startMainGame = () => {
-    setGameRunning(true)
-    const config = AGE_GROUP_GAMES[ageGroupRef.current]
-    startTimer(config.duration[gameModeRef.current])
-    startRecording()
+    setGameSequence(sequence); gameSequenceRef.current = sequence
+    setGameDuration(duration); setGameIdx(0); gameIdxRef.current = 0
+    setGameRunning(false); setPhase(PHASE.MAIN_GAMES); phaseRef.current = PHASE.MAIN_GAMES
   }
 
   const currentGateway    = GATEWAY_SEQUENCE[gatewayIdx]
@@ -264,51 +230,53 @@ export default function Assessment() {
   const MainGameComponent = phase === PHASE.MAIN_GAMES ? gameComponents[currentGameCode]      : null
   const gatewayPassCount  = gatewayScores.filter(s => s.passed).length
 
+  // ─── PHASE: CONSENT ─────────────────────────────────────────
+  if (phase === PHASE.CONSENT) return (
+    <div style={S.root}>
+      {/* Nền tối phía sau */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: '#334155' }}>
+          <div style={{ fontSize: 48 }}>🧩</div>
+          <p style={{ marginTop: 12 }}>ASD-SCREEN AI</p>
+        </div>
+      </div>
+      {/* ConsentForm hiện dưới dạng overlay */}
+      <ConsentForm
+        childName={childName || 'bé'}
+        onAccept={(record) => {
+          setConsentRecord(record)
+          setPhase(PHASE.SETUP)
+          phaseRef.current = PHASE.SETUP
+        }}
+        onDecline={() => navigate('/dashboard')}
+      />
+    </div>
+  )
+
   // ─── PHASE: SETUP ───────────────────────────────────────────
   if (phase === PHASE.SETUP) return (
     <div style={S.root}>
-      
-      {/* HEADER: Chứa nút Trở về Dashboard */}
-      <div style={{
-        width: '100%',
-        padding: '16px 24px',
-        boxSizing: 'border-box',
-        display: 'flex',
-        justifyContent: 'flex-start',
-        flexShrink: 0, // Đảm bảo header không bị ép nhỏ
-        background: 'transparent'
-      }}>
-        <button
-          onClick={() => navigate('/dashboard')}
-          style={{
-            padding: '8px 16px',
-            background: '#1e293b',
-            border: '1px solid #334155',
-            borderRadius: '8px',
-            color: '#e2e8f0',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '600',
-            transition: 'background 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.background = '#334155'}
-          onMouseOut={(e) => e.currentTarget.style.background = '#1e293b'}
-        >
+      <div style={{ width: '100%', padding: '16px 24px', boxSizing: 'border-box', display: 'flex', justifyContent: 'flex-start', flexShrink: 0 }}>
+        <button onClick={() => navigate('/dashboard')}
+          style={{ padding: '8px 16px', background: '#1e293b', border: '1px solid #334155', borderRadius: '8px', color: '#e2e8f0', cursor: 'pointer', fontSize: '14px', fontWeight: '600' }}>
           ← Trở về Dashboard
         </button>
       </div>
-
-      {/* NỘI DUNG CHÍNH: Form thông tin */}
-      <div style={{ ...S.card, paddingTop: 0 }}> {/* Giảm padding top một chút để cân đối */}
+      <div style={{ ...S.card, paddingTop: 0 }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>👶</div>
         <h2 style={{ color: '#e2e8f0', fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Thông tin trẻ</h2>
+
+        {/* Badge đã đồng ý */}
+        {consentRecord && (
+          <div style={{ background: '#14532d', border: '1px solid #166534', borderRadius: 8, padding: '8px 16px', marginBottom: 16, color: '#4ade80', fontSize: 13 }}>
+            ✅ Đã ký đồng ý lúc {new Date(consentRecord.accepted_at).toLocaleTimeString('vi-VN')}
+            {consentRecord.consents.aiTraining && ' • Cho phép dùng dữ liệu huấn luyện AI'}
+          </div>
+        )}
+
         <div style={{ width: '100%', marginBottom: 16 }}>
           <label style={S.label}>Tên trẻ *</label>
-          <input value={childName} onChange={e => setChildName(e.target.value)}
-            placeholder="Ví dụ: Bé Nam" style={S.input} />
+          <input value={childName} onChange={e => setChildName(e.target.value)} placeholder="Ví dụ: Bé Nam" style={S.input} />
         </div>
         <div style={{ width: '100%', marginBottom: 24 }}>
           <label style={S.label}>Ngày sinh *</label>
@@ -319,7 +287,6 @@ export default function Assessment() {
             📊 Nhóm tuổi: <strong>{AGE_GROUP_GAMES[getAgeGroup(getAgeMonths(birthDate))]?.label}</strong> ({getAgeMonths(birthDate)} tháng)
           </div>
         )}
-        {/* Camera toggle trước khi bắt đầu */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '10px 16px', background: '#1e293b', borderRadius: 10, border: '1px solid #334155' }}>
           <span style={{ color: '#94a3b8', fontSize: 13 }}>📷 AI Camera (MediaPipe)</span>
           <button onClick={() => setCameraEnabled(p => !p)}
@@ -339,28 +306,16 @@ export default function Assessment() {
   // ─── PHASE: DEVICE CHECK ────────────────────────────────────
   if (phase === PHASE.DEVICE_CHECK) return (
     <div style={S.root}>
-      <DeviceCheck
-        childName={childName}
-        onPass={(cameraAvailable) => {
-          setCameraEnabled(cameraAvailable)
-          setPhase(PHASE.GATEWAY)
-          phaseRef.current = PHASE.GATEWAY
-        }}
-        onSkip={() => {
-          setCameraEnabled(false)
-          setPhase(PHASE.GATEWAY)
-          phaseRef.current = PHASE.GATEWAY
-        }}
-      />
+      <DeviceCheck childName={childName}
+        onPass={(cameraAvailable) => { setCameraEnabled(cameraAvailable); setPhase(PHASE.GATEWAY); phaseRef.current = PHASE.GATEWAY }}
+        onSkip={() => { setCameraEnabled(false); setPhase(PHASE.GATEWAY); phaseRef.current = PHASE.GATEWAY }} />
     </div>
   )
 
   // ─── PHASE: GATEWAY ─────────────────────────────────────────
   if (phase === PHASE.GATEWAY) return (
     <div style={S.root}>
-      {/* CameraAI — chạy nền, PiP góc phải */}
       <CameraAI latestAIResult={latestAIResult} enabled={cameraEnabled} showPreview={true} />
-
       <div style={S.header}>
         <div style={S.headerLeft}>
           <span style={{ color: '#fbbf24', fontWeight: 700, fontSize: 13 }}>🔑 GATEWAY {gatewayIdx + 1}/3</span>
@@ -373,7 +328,6 @@ export default function Assessment() {
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          {/* Toggle camera */}
           <AudioIndicator audioResult={audioResult} isRecording={isRecording} error={audioError} />
           <button onClick={() => setCameraEnabled(p => !p)}
             style={{ ...S.btnBlue, background: cameraEnabled ? '#1e3a5f' : '#334155', fontSize: 12, padding: '6px 12px' }}>
@@ -391,12 +345,9 @@ export default function Assessment() {
       <div style={S.gatewayBar}>
         {GATEWAY_SEQUENCE.map((g, i) => (
           <div key={g.code} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: '50%', fontSize: 12, fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            <div style={{ width: 28, height: 28, borderRadius: '50%', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: i < gatewayIdx ? (gatewayScores[i]?.passed ? '#166534' : '#7f1d1d') : i === gatewayIdx ? '#d97706' : '#334155',
-              color: '#fff', border: `2px solid ${i === gatewayIdx ? '#fbbf24' : 'transparent'}`
-            }}>
+              color: '#fff', border: `2px solid ${i === gatewayIdx ? '#fbbf24' : 'transparent'}` }}>
               {i < gatewayIdx ? (gatewayScores[i]?.passed ? '✓' : '✗') : i + 1}
             </div>
             <span style={{ color: i === gatewayIdx ? '#fbbf24' : '#475569', fontSize: 12 }}>{g.label}</span>
@@ -415,9 +366,7 @@ export default function Assessment() {
       <div style={S.gameArea}>
         {!gatewayRunning ? (
           <div style={S.introBox}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>
-              {gatewayIdx === 0 ? '🎈' : gatewayIdx === 1 ? '📢' : '👏'}
-            </div>
+            <div style={{ fontSize: 56, marginBottom: 16 }}>{gatewayIdx === 0 ? '🎈' : gatewayIdx === 1 ? '📢' : '👏'}</div>
             <h3 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{currentGateway?.label}</h3>
             <p style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>Gateway {gatewayIdx + 1}/3 • {currentGateway?.duration}s</p>
             <div style={{ background: '#1e3a5f', borderRadius: 12, padding: '12px 20px', marginBottom: 24, color: '#94a3b8', fontSize: 13, maxWidth: 360, textAlign: 'center' }}>
@@ -435,15 +384,9 @@ export default function Assessment() {
         ) : (
           GatewayComponent && (
             <Suspense fallback={<div style={S.loading}>⏳ Đang tải...</div>}>
-              <GatewayComponent
-                latestAIResult={latestAIResult}
-                onFeatureCapture={handleFeatureCapture}
-                timeElapsed={timeElapsed}
-                gameDuration={currentGateway?.duration}
-                childName={childName}
-                assessmentId={assessmentId}
-                onScore={handleGatewayScore}
-              />
+              <GatewayComponent latestAIResult={latestAIResult} onFeatureCapture={handleFeatureCapture}
+                timeElapsed={timeElapsed} gameDuration={currentGateway?.duration}
+                childName={childName} assessmentId={assessmentId} onScore={handleGatewayScore} />
             </Suspense>
           )
         )}
@@ -459,32 +402,22 @@ export default function Assessment() {
         <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 24 }}>{childName} • {AGE_GROUP_GAMES[ageGroup]?.label}</p>
         <div style={{ width: '100%', marginBottom: 24 }}>
           {gatewayScores.map((s, i) => (
-            <div key={i} style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '10px 16px', marginBottom: 8,
-              background: s.passed ? '#14532d' : '#450a0a', borderRadius: 10,
-              border: `1px solid ${s.passed ? '#166534' : '#7f1d1d'}`
-            }}>
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', marginBottom: 8,
+              background: s.passed ? '#14532d' : '#450a0a', borderRadius: 10, border: `1px solid ${s.passed ? '#166534' : '#7f1d1d'}` }}>
               <span style={{ color: '#e2e8f0', fontSize: 14 }}>{GATEWAY_SEQUENCE[i]?.label}</span>
               <span style={{ fontSize: 18 }}>{s.passed ? '✅' : '❌'}</span>
             </div>
           ))}
         </div>
-        <div style={{
-          padding: '16px 24px', borderRadius: 16, marginBottom: 24, textAlign: 'center',
+        <div style={{ padding: '16px 24px', borderRadius: 16, marginBottom: 24, textAlign: 'center',
           background: gameMode === 'full' ? '#14532d' : '#450a0a',
-          border: `2px solid ${gameMode === 'full' ? '#22c55e' : '#ef4444'}`
-        }}>
+          border: `2px solid ${gameMode === 'full' ? '#22c55e' : '#ef4444'}` }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>{gameMode === 'full' ? '🎯' : '📋'}</div>
           <div style={{ color: gameMode === 'full' ? '#22c55e' : '#ef4444', fontWeight: 700, fontSize: 18, marginBottom: 4 }}>
-            {gameMode === 'full'
-              ? `Đạt ${gatewayPassCount}/3 → Phiếu ĐẦY ĐỦ`
-              : `Đạt ${gatewayPassCount}/3 → Phiếu RÚT GỌN`}
+            {gameMode === 'full' ? `Đạt ${gatewayPassCount}/3 → Phiếu ĐẦY ĐỦ` : `Đạt ${gatewayPassCount}/3 → Phiếu RÚT GỌN`}
           </div>
           <div style={{ color: '#94a3b8', fontSize: 13 }}>
-            {gameMode === 'full'
-              ? `5 game theo nhóm tuổi ${AGE_GROUP_GAMES[ageGroup]?.label}`
-              : `3 game lõi theo nhóm tuổi ${AGE_GROUP_GAMES[ageGroup]?.label}`}
+            {gameMode === 'full' ? `5 game theo nhóm tuổi ${AGE_GROUP_GAMES[ageGroup]?.label}` : `3 game lõi theo nhóm tuổi ${AGE_GROUP_GAMES[ageGroup]?.label}`}
           </div>
         </div>
         <div style={{ width: '100%', marginBottom: 24 }}>
@@ -505,9 +438,7 @@ export default function Assessment() {
   // ─── PHASE: MAIN GAMES ──────────────────────────────────────
   if (phase === PHASE.MAIN_GAMES) return (
     <div style={S.root}>
-      {/* CameraAI — chạy nền */}
       <CameraAI latestAIResult={latestAIResult} enabled={cameraEnabled} showPreview={true} />
-
       <div style={S.header}>
         <div style={S.headerLeft}>
           <span style={{ color: '#94a3b8', fontSize: 12 }}>{gameMode === 'full' ? '📋 ĐẦY ĐỦ' : '📄 RÚT GỌN'}</span>
@@ -539,12 +470,10 @@ export default function Assessment() {
 
       <div style={{ ...S.gatewayBar, justifyContent: 'center' }}>
         {gameSequence.map((code, i) => (
-          <div key={code} style={{
-            width: 24, height: 24, borderRadius: '50%', fontSize: 10, fontWeight: 700,
+          <div key={code} style={{ width: 24, height: 24, borderRadius: '50%', fontSize: 10, fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
             background: i < gameIdx ? '#22c55e' : i === gameIdx ? '#3b82f6' : '#334155',
-            transform: i === gameIdx ? 'scale(1.2)' : 'scale(1)', transition: 'all 0.3s'
-          }}>
+            transform: i === gameIdx ? 'scale(1.2)' : 'scale(1)', transition: 'all 0.3s' }}>
             {i < gameIdx ? '✓' : i + 1}
           </div>
         ))}
@@ -574,14 +503,9 @@ export default function Assessment() {
         ) : (
           MainGameComponent && (
             <Suspense fallback={<div style={S.loading}>⏳ Đang tải...</div>}>
-              <MainGameComponent
-                latestAIResult={latestAIResult}
-                onFeatureCapture={handleFeatureCapture}
-                timeElapsed={timeElapsed}
-                gameDuration={gameDuration}
-                childName={childName}
-                assessmentId={assessmentId}
-              />
+              <MainGameComponent latestAIResult={latestAIResult} onFeatureCapture={handleFeatureCapture}
+                timeElapsed={timeElapsed} gameDuration={gameDuration}
+                childName={childName} assessmentId={assessmentId} />
             </Suspense>
           )
         )}
@@ -599,6 +523,16 @@ export default function Assessment() {
         <p style={{ color: '#64748b', fontSize: 14, marginBottom: 24 }}>
           {gameMode === 'full' ? '📋 Phiếu đầy đủ' : '📄 Phiếu rút gọn'} • {gameSequence.length} game đã hoàn thành
         </p>
+
+        {/* Disclaimer cuối phiên */}
+        <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '14px 20px', marginBottom: 24, maxWidth: 480, textAlign: 'left' }}>
+          <p style={{ color: '#f59e0b', fontSize: 13, fontWeight: 700, margin: '0 0 6px' }}>⚠️ Lưu ý quan trọng</p>
+          <p style={{ color: '#64748b', fontSize: 12, lineHeight: 1.6, margin: 0 }}>
+            Kết quả này là công cụ <strong style={{ color: '#94a3b8' }}>sàng lọc</strong>, không phải chẩn đoán y tế.
+            Vui lòng tham khảo ý kiến bác sĩ hoặc chuyên gia tâm lý trước khi đưa ra bất kỳ quyết định nào về sức khỏe của trẻ.
+          </p>
+        </div>
+
         <div style={{ display: 'flex', gap: 12 }}>
           <button onClick={() => navigate(`/report/${assessmentId}`)} style={S.btnBlue}>📊 Xem báo cáo</button>
           <button onClick={() => navigate('/dashboard')} style={{ ...S.btnBlue, background: '#334155' }}>🏠 Dashboard</button>
