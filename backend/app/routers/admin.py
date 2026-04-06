@@ -96,12 +96,35 @@ def get_stats(
         "high_risk":         rows[5],
     }
 
+# ── Thêm endpoint xem lịch sử chuyển giao ────────────────────────────────────
+ 
+@router.get("/children/{child_id}/transfers")
+def get_transfer_history(
+    child_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    rows = db.execute(text("""
+        SELECT
+            ct.id, ct.transfer_type, ct.reason, ct.transferred_at,
+            fu.full_name AS from_name,
+            tu.full_name AS to_name,
+            bu.full_name AS by_name
+        FROM child_transfers ct
+        LEFT JOIN users fu ON fu.id = ct.from_user_id
+        LEFT JOIN users tu ON tu.id = ct.to_user_id
+        LEFT JOIN users bu ON bu.id = ct.transferred_by
+        WHERE ct.child_id = :child_id
+        ORDER BY ct.transferred_at DESC
+    """), {"child_id": child_id}).mappings().fetchall()
+    return [dict(r) for r in rows]
+ 
 
 # ── Phân công trẻ cho specialist ──────────────────────────────────────────
 
 class AssignChildRequest(BaseModel):
-    specialist_id: Optional[str] = None   # None = bỏ phân công
-
+    specialist_id: Optional[str] = None
+    reason: Optional[str] = None
 
 @router.patch("/children/{child_id}/assign")
 def assign_child(
@@ -113,7 +136,7 @@ def assign_child(
     child = db.query(Child).filter(Child.id == child_id).first()
     if not child:
         raise HTTPException(404, "Không tìm thấy trẻ")
-
+ 
     if data.specialist_id:
         specialist = db.query(User).filter(
             User.id == data.specialist_id,
@@ -121,19 +144,35 @@ def assign_child(
         ).first()
         if not specialist:
             raise HTTPException(404, "Không tìm thấy chuyên gia")
-
+ 
+    old_specialist_id = str(child.assigned_to) if child.assigned_to else None
+ 
+    # Ghi lịch sử chuyển giao nếu có thay đổi
+    if old_specialist_id != data.specialist_id:
+        db.execute(text("""
+            INSERT INTO child_transfers
+                (child_id, from_user_id, to_user_id, transfer_type, reason, transferred_by)
+            VALUES
+                (:child_id, :from_id, :to_id, 'specialist', :reason, :by)
+        """), {
+            "child_id": child_id,
+            "from_id":  old_specialist_id,
+            "to_id":    data.specialist_id,
+            "reason":   data.reason or "Phân công bởi Admin",
+            "by":       str(current_user.id),
+        })
+ 
     db.execute(text("""
         UPDATE children SET assigned_to = :specialist_id, updated_at = NOW()
         WHERE id = :child_id
     """), {"specialist_id": data.specialist_id, "child_id": child_id})
     db.commit()
-
+ 
     return {
         "message": "Phân công thành công" if data.specialist_id else "Đã hủy phân công",
         "child_id": child_id,
         "specialist_id": data.specialist_id
     }
-
 
 @router.get("/children")
 def get_all_children_admin(
@@ -165,14 +204,18 @@ def get_specialists(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Tất cả role đều xem được — dùng để PH tìm specialist"""
-    query = "SELECT id, full_name, email, city FROM users WHERE role = 'specialist' AND is_active = true"
+    query = """
+        SELECT id, full_name, email, city,
+               (SELECT COUNT(*) FROM children WHERE assigned_to = users.id) AS child_count
+        FROM users
+        WHERE role = 'specialist' AND is_active = true
+    """
     params = {}
     if city:
-        query += " AND city ILIKE :city"
-        params["city"] = f"%{city}%"
+        query += " AND city = :city"
+        params["city"] = city
     query += " ORDER BY city, full_name"
-
+ 
     rows = db.execute(text(query), params).mappings().fetchall()
     return [dict(r) for r in rows]
 

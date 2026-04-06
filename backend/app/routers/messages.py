@@ -33,7 +33,7 @@ def get_inbox(
         {
             "id":         str(r["id"]),
             "content":    r["content"],
-            "is_read":    r["is_read"],
+            "is_read":    bool(r["is_read"]),
             "created_at": str(r["created_at"]),
             "read_at":    str(r["read_at"]) if r["read_at"] else None,
             "child_id":   str(r["child_id"]) if r["child_id"] else None,
@@ -66,7 +66,7 @@ def get_sent(
         {
             "id":         str(r["id"]),
             "content":    r["content"],
-            "is_read":    r["is_read"],
+            "is_read":    bool(r["is_read"]),
             "created_at": str(r["created_at"]),
             "read_at":    str(r["read_at"]) if r["read_at"] else None,
             "child_id":   str(r["child_id"]) if r["child_id"] else None,
@@ -99,9 +99,10 @@ async def send_message(
     msg_id = str(uuid.uuid4())
     now    = datetime.utcnow()
 
+    # PostgreSQL dùng false thay vì 0
     db.execute(text("""
         INSERT INTO messages (id, from_user_id, to_user_id, child_id, content, is_read, created_at)
-        VALUES (:id, :from_id, :to_id, :child_id, :content, 0, NOW())
+        VALUES (:id, :from_id, :to_id, :child_id, :content, false, NOW())
     """), {
         "id":       msg_id,
         "from_id":  str(current_user.id),
@@ -111,7 +112,6 @@ async def send_message(
     })
     db.commit()
 
-    # Lấy child_name nếu có
     child_name = None
     if child_id:
         child = db.execute(
@@ -149,8 +149,9 @@ async def mark_read(
         {"id": message_id, "uid": str(current_user.id)}
     ).mappings().fetchone()
 
+    # PostgreSQL dùng true thay vì 1
     result = db.execute(text("""
-        UPDATE messages SET is_read = 1, read_at = NOW()
+        UPDATE messages SET is_read = true, read_at = NOW()
         WHERE id = :id AND to_user_id = :uid
     """), {"id": message_id, "uid": str(current_user.id)})
     db.commit()
@@ -179,10 +180,11 @@ def get_users_list(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # PostgreSQL dùng true thay vì 1
     rows = db.execute(text("""
         SELECT id, full_name, username, role
         FROM users
-        WHERE is_active = 1 AND id != :uid
+        WHERE is_active = true AND id != :uid
         ORDER BY full_name
     """), {"uid": str(current_user.id)}).mappings().fetchall()
 
@@ -194,5 +196,4 @@ def get_users_list(
             "role":      r["role"],
         }
         for r in rows
-    ]
-
+    ]   

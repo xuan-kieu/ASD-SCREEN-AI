@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 import useChildStore from '../store/childStore'
 import api from '../api/axios'
+import { CITIES } from '../constants/cities'
 
 const ROLE_LABEL = {
   admin:      '👑 Quản trị viên',
@@ -12,11 +13,11 @@ const ROLE_LABEL = {
 }
 
 const AGE_GROUPS = [
-  { label: 'Tất cả',       value: 'all' },
-  { label: '12-18 tháng',  value: '12-18' },
-  { label: '18-24 tháng',  value: '18-24' },
-  { label: '24-36 tháng',  value: '24-36' },
-  { label: '36-60 tháng',  value: '36-60' },
+  { label: 'Tất cả',      value: 'all' },
+  { label: '12-18 tháng', value: '12-18' },
+  { label: '18-24 tháng', value: '18-24' },
+  { label: '24-36 tháng', value: '24-36' },
+  { label: '36-60 tháng', value: '36-60' },
 ]
 
 export default function Dashboard() {
@@ -45,17 +46,37 @@ export default function Dashboard() {
   const [joiningClass, setJoiningClass]   = useState(false)
   const [joinMsg, setJoinMsg]             = useState(null)
 
+  // Parent: tìm chuyên gia
+  const [showFindSpecialist, setShowFindSpecialist] = useState(false)
+  const [specialistCity, setSpecialistCity]         = useState('')
+  const [specialists, setSpecialists]               = useState([])
+  const [loadingSpecialists, setLoadingSpecialists] = useState(false)
+
   useEffect(() => {
     fetchChildren()
     if (user?.role === 'teacher') loadClassrooms()
+    // Tự điền thành phố từ profile user nếu có
+    if (user?.city) setSpecialistCity(user.city)
   }, [])
 
   const loadClassrooms = async () => {
-    try {
-      const res = await api.get('/admin/classrooms/my')
-      setClassrooms(res.data)
-    } catch {}
+    try { const res = await api.get('/admin/classrooms/my'); setClassrooms(res.data) } catch {}
   }
+
+  const searchSpecialists = async () => {
+    setLoadingSpecialists(true)
+    try {
+      const res = await api.get('/admin/specialists', {
+        params: specialistCity ? { city: specialistCity } : {}
+      })
+      setSpecialists(res.data)
+    } catch { setSpecialists([]) }
+    finally { setLoadingSpecialists(false) }
+  }
+
+  useEffect(() => {
+    if (showFindSpecialist) searchSpecialists()
+  }, [showFindSpecialist, specialistCity])
 
   const handleLogout = () => { logout(); navigate('/login') }
 
@@ -68,9 +89,7 @@ export default function Dashboard() {
       })
     } catch {
       alert('Không thể tạo phiên đánh giá. Vui lòng thử lại.')
-    } finally {
-      setStartingAssessment(null)
-    }
+    } finally { setStartingAssessment(null) }
   }
 
   const handleCreateClass = async () => {
@@ -78,34 +97,24 @@ export default function Dashboard() {
     setCreatingClass(true)
     try {
       const res = await api.post('/admin/classrooms', { name: className })
-      setNewClassCode(res.data.class_code)
-      setClassName('')
-      setShowCreateClass(false)
+      setNewClassCode(res.data.class_code); setClassName(''); setShowCreateClass(false)
       loadClassrooms()
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Lỗi tạo lớp')
-    } finally {
-      setCreatingClass(false)
-    }
+    } catch (err) { alert(err.response?.data?.detail || 'Lỗi tạo lớp') }
+    finally { setCreatingClass(false) }
   }
 
   const handleJoinClass = async () => {
     if (!joinCode || !joinChildId) return
-    setJoiningClass(true)
-    setJoinMsg(null)
+    setJoiningClass(true); setJoinMsg(null)
     try {
       const res = await api.post('/admin/classrooms/join', {
-        class_code: joinCode.toUpperCase(),
-        child_id: joinChildId
+        class_code: joinCode.toUpperCase(), child_id: joinChildId
       })
-      setJoinMsg({ type: 'success', text: res.data.message })
-      setJoinCode('')
+      setJoinMsg({ type: 'success', text: res.data.message }); setJoinCode('')
       setTimeout(() => { setShowJoinClass(false); setJoinMsg(null) }, 2000)
     } catch (err) {
       setJoinMsg({ type: 'error', text: err.response?.data?.detail || 'Mã lớp không hợp lệ' })
-    } finally {
-      setJoiningClass(false)
-    }
+    } finally { setJoiningClass(false) }
   }
 
   const filtered = useMemo(() => {
@@ -143,38 +152,25 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-2">
-            <span className="text-sm text-gray-500 mr-1">
-              {user?.full_name} · <span className="text-xs">{ROLE_LABEL[user?.role]}</span>
-            </span>
+            <span className="text-sm text-gray-500 mr-1">{user?.full_name} · <span className="text-xs">{ROLE_LABEL[user?.role]}</span></span>
             <NavBtn onClick={() => navigate('/messages')} icon="💬" label="Tin nhắn" />
             <NavBtn onClick={() => navigate('/appointments')} icon="📅" label="Lịch hẹn" />
-            {user?.role === 'admin' && (
-              <NavBtn onClick={() => navigate('/admin')} icon="⚙️" label="Admin" color="purple" />
-            )}
+            {user?.role === 'admin' && <NavBtn onClick={() => navigate('/admin')} icon="⚙️" label="Admin" color="purple" />}
             <NavBtn onClick={() => navigate('/profile')} icon="👤" label="Hồ sơ" />
-            <button onClick={handleLogout}
-              className="bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-2 rounded-lg transition-colors">
-              Đăng xuất
-            </button>
+            <button onClick={handleLogout} className="bg-red-50 hover:bg-red-100 text-red-600 text-sm px-3 py-2 rounded-lg">Đăng xuất</button>
           </div>
-          <button className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600"
-            onClick={() => setMenuOpen(o => !o)}>
+          <button className="md:hidden p-2 rounded-lg hover:bg-gray-100 text-gray-600" onClick={() => setMenuOpen(o => !o)}>
             {menuOpen ? '✕' : '☰'}
           </button>
         </div>
-
         {menuOpen && (
           <div className="md:hidden mt-3 pt-3 border-t border-gray-100 flex flex-col gap-1">
             <div className="text-sm text-gray-500 px-2 pb-2">{user?.full_name} · {ROLE_LABEL[user?.role]}</div>
             <MobileNavBtn onClick={() => { navigate('/messages'); setMenuOpen(false) }} icon="💬" label="Tin nhắn" />
             <MobileNavBtn onClick={() => { navigate('/appointments'); setMenuOpen(false) }} icon="📅" label="Lịch hẹn" />
-            {user?.role === 'admin' && (
-              <MobileNavBtn onClick={() => { navigate('/admin'); setMenuOpen(false) }} icon="⚙️" label="Admin" />
-            )}
+            {user?.role === 'admin' && <MobileNavBtn onClick={() => { navigate('/admin'); setMenuOpen(false) }} icon="⚙️" label="Admin" />}
             <MobileNavBtn onClick={() => { navigate('/profile'); setMenuOpen(false) }} icon="👤" label="Hồ sơ" />
-            <button onClick={handleLogout} className="text-left px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 text-sm">
-              🚪 Đăng xuất
-            </button>
+            <button onClick={handleLogout} className="text-left px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 text-sm">🚪 Đăng xuất</button>
           </div>
         )}
       </header>
@@ -208,23 +204,17 @@ export default function Dashboard() {
                 + Tạo lớp mới
               </button>
             </div>
-
             {newClassCode && (
               <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl">
                 <p className="text-sm font-medium text-green-700 mb-2">✅ Tạo lớp thành công! Chia sẻ mã này cho phụ huynh:</p>
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-3xl font-bold tracking-widest text-green-700 bg-white px-4 py-2 rounded-lg border border-green-300 font-mono">
-                    {newClassCode}
-                  </span>
+                  <span className="text-3xl font-bold tracking-widest text-green-700 bg-white px-4 py-2 rounded-lg border border-green-300 font-mono">{newClassCode}</span>
                   <button onClick={() => { navigator.clipboard.writeText(newClassCode); alert('Đã copy!') }}
-                    className="text-xs text-green-600 border border-green-300 px-3 py-2 rounded-lg hover:bg-green-100">
-                    📋 Copy
-                  </button>
+                    className="text-xs text-green-600 border border-green-300 px-3 py-2 rounded-lg hover:bg-green-100">📋 Copy</button>
                   <button onClick={() => setNewClassCode(null)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
                 </div>
               </div>
             )}
-
             {classrooms.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <div className="text-4xl mb-2">🏫</div>
@@ -236,15 +226,11 @@ export default function Dashboard() {
                   <div key={cls.id} className="border border-gray-200 rounded-xl p-4 hover:border-indigo-300 transition-colors">
                     <div className="flex justify-between items-start mb-2">
                       <h4 className="font-semibold text-gray-800 text-sm">{cls.name}</h4>
-                      <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-mono font-bold">
-                        {cls.class_code}
-                      </span>
+                      <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded font-mono font-bold">{cls.class_code}</span>
                     </div>
                     <p className="text-xs text-gray-500">👶 {cls.student_count} học sinh</p>
-                    <button onClick={() => { navigator.clipboard.writeText(cls.class_code); alert(`Đã copy mã lớp: ${cls.class_code}`) }}
-                      className="text-xs text-indigo-600 hover:underline mt-2">
-                      📋 Copy mã lớp
-                    </button>
+                    <button onClick={() => { navigator.clipboard.writeText(cls.class_code); alert(`Đã copy: ${cls.class_code}`) }}
+                      className="text-xs text-indigo-600 hover:underline mt-2">📋 Copy mã lớp</button>
                   </div>
                 ))}
               </div>
@@ -252,17 +238,33 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── PARENT: Nhập mã lớp ── */}
-        {user?.role === 'parent' && children.length > 0 && (
-          <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 mb-6 flex justify-between items-center gap-4">
-            <div>
-              <p className="text-sm font-medium text-indigo-700">🏫 Thêm con vào lớp của giáo viên</p>
-              <p className="text-xs text-indigo-500 mt-0.5">Nhập mã lớp do giáo viên cung cấp</p>
+        {/* ── PARENT: Tìm chuyên gia + Nhập mã lớp ── */}
+        {user?.role === 'parent' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            {/* Tìm chuyên gia */}
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 flex justify-between items-center gap-4">
+              <div>
+                <p className="text-sm font-medium text-indigo-700">🩺 Tìm chuyên gia</p>
+                <p className="text-xs text-indigo-500 mt-0.5">Gợi ý chuyên gia cùng thành phố</p>
+              </div>
+              <button onClick={() => setShowFindSpecialist(true)}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap flex-shrink-0">
+                Tìm ngay
+              </button>
             </div>
-            <button onClick={() => setShowJoinClass(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap flex-shrink-0">
-              Nhập mã lớp
-            </button>
+            {/* Nhập mã lớp */}
+            {children.length > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex justify-between items-center gap-4">
+                <div>
+                  <p className="text-sm font-medium text-green-700">🏫 Thêm con vào lớp</p>
+                  <p className="text-xs text-green-500 mt-0.5">Nhập mã lớp từ giáo viên</p>
+                </div>
+                <button onClick={() => setShowJoinClass(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap flex-shrink-0">
+                  Nhập mã
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -279,8 +281,7 @@ export default function Dashboard() {
           <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-4 p-3 bg-gray-50 rounded-xl">
             <div className="flex-1 min-w-0 relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Tìm theo tên trẻ..."
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Tìm theo tên trẻ..."
                 className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400" />
             </div>
             <select value={ageFilter} onChange={e => setAgeFilter(e.target.value)}
@@ -304,9 +305,7 @@ export default function Dashboard() {
           {hasFilter && (
             <p className="text-xs text-gray-400 mb-3">
               Hiển thị {filtered.length}/{children.length} trẻ
-              {search && <span> • tên chứa "<strong>{search}</strong>"</span>}
-              {ageFilter !== 'all' && <span> • {ageFilter} tháng</span>}
-              {genderFilter !== 'all' && <span> • {genderFilter === 'male' ? 'Nam' : 'Nữ'}</span>}
+              {search && <span> • "<strong>{search}</strong>"</span>}
             </p>
           )}
 
@@ -315,7 +314,7 @@ export default function Dashboard() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-gray-400">
               <div className="text-5xl mb-3">{hasFilter ? '🔍' : '👶'}</div>
-              <p className="font-medium">{hasFilter ? 'Không tìm thấy trẻ' : 'Chưa có trẻ nào'}</p>
+              <p className="font-medium">{hasFilter ? 'Không tìm thấy' : 'Chưa có trẻ nào'}</p>
               <p className="text-sm mt-1">{hasFilter ? 'Thử thay đổi bộ lọc' : 'Nhấn "Thêm trẻ mới" để bắt đầu'}</p>
             </div>
           ) : (
@@ -348,16 +347,13 @@ export default function Dashboard() {
                       </td>
                       <td className="py-3 text-gray-600 hidden md:table-cell">{child.region || '—'}</td>
                       <td className="py-3">
-                        <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full whitespace-nowrap">
-                          Đang theo dõi
-                        </span>
+                        <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full whitespace-nowrap">Đang theo dõi</span>
                       </td>
                       <td className="py-3 pr-4 md:pr-0">
                         <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
                           <button onClick={() => navigate(`/children/${child.id}`)}
                             className="text-indigo-600 hover:text-indigo-800 text-xs font-medium">Xem</button>
-                          <button onClick={() => handleStartAssessment(child)}
-                            disabled={startingAssessment === child.id}
+                          <button onClick={() => handleStartAssessment(child)} disabled={startingAssessment === child.id}
                             className="text-green-600 hover:text-green-800 text-xs font-medium disabled:opacity-40 whitespace-nowrap">
                             {startingAssessment === child.id ? '⏳...' : '▶ Đánh giá'}
                           </button>
@@ -379,10 +375,9 @@ export default function Dashboard() {
             <h3 className="font-bold text-gray-800 text-lg mb-4">🏫 Tạo lớp mới</h3>
             <label className="block text-xs font-medium text-gray-700 mb-1">Tên lớp *</label>
             <input value={className} onChange={e => setClassName(e.target.value)}
-              placeholder="VD: Lớp Mầm 2024"
-              onKeyDown={e => e.key === 'Enter' && handleCreateClass()}
+              placeholder="VD: Lớp Mầm 2024" onKeyDown={e => e.key === 'Enter' && handleCreateClass()}
               className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-            <p className="text-xs text-gray-400 mt-1 mb-5">Hệ thống sẽ tự tạo mã lớp 6 ký tự</p>
+            <p className="text-xs text-gray-400 mt-1 mb-5">Hệ thống tự tạo mã lớp 6 ký tự</p>
             <div className="flex gap-3">
               <button onClick={() => { setShowCreateClass(false); setClassName('') }}
                 className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm">Hủy</button>
@@ -404,17 +399,16 @@ export default function Dashboard() {
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Chọn con *</label>
                 <select value={joinChildId} onChange={e => setJoinChildId(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm">
                   <option value="">-- Chọn trẻ --</option>
                   {children.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Mã lớp *</label>
-                <input value={joinCode}
-                  onChange={e => setJoinCode(e.target.value.toUpperCase().slice(0, 6))}
+                <input value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase().slice(0, 6))}
                   placeholder="VD: AB1C2D" maxLength={6}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-center text-xl font-bold tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm text-center text-xl font-bold tracking-widest" />
               </div>
               {joinMsg && (
                 <div className={`px-3 py-2 rounded-xl text-sm ${joinMsg.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
@@ -425,11 +419,67 @@ export default function Dashboard() {
             <div className="flex gap-3 mt-5">
               <button onClick={() => { setShowJoinClass(false); setJoinCode(''); setJoinChildId(''); setJoinMsg(null) }}
                 className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl text-sm">Hủy</button>
-              <button onClick={handleJoinClass}
-                disabled={joiningClass || !joinCode || joinCode.length < 6 || !joinChildId}
+              <button onClick={handleJoinClass} disabled={joiningClass || !joinCode || joinCode.length < 6 || !joinChildId}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white py-2.5 rounded-xl text-sm font-medium">
                 {joiningClass ? '⏳...' : '🏫 Vào lớp'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal tìm chuyên gia (Parent) */}
+      {showFindSpecialist && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[85vh]">
+            <div className="p-6 pb-4 border-b border-gray-100">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-gray-800 text-lg">🩺 Tìm chuyên gia</h3>
+                <button onClick={() => setShowFindSpecialist(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Lọc theo thành phố</label>
+                <select value={specialistCity} onChange={e => setSpecialistCity(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  <option value="">-- Tất cả thành phố --</option>
+                  {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 pt-4">
+              {loadingSpecialists ? (
+                <div className="text-center py-8 text-gray-400">⏳ Đang tìm kiếm...</div>
+              ) : specialists.length === 0 ? (
+                <div className="text-center py-8 text-gray-400">
+                  <div className="text-4xl mb-2">🔍</div>
+                  <p className="text-sm">Không tìm thấy chuyên gia{specialistCity ? ` tại ${specialistCity}` : ''}</p>
+                  <p className="text-xs mt-1">Thử chọn thành phố khác hoặc xem tất cả</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-400 mb-3">Tìm thấy {specialists.length} chuyên gia</p>
+                  {specialists.map(s => (
+                    <div key={s.id} className="border border-gray-200 rounded-xl p-4 hover:border-indigo-300 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-semibold text-gray-800">🩺 {s.full_name}</p>
+                          {s.city && <p className="text-xs text-indigo-600 mt-0.5">📍 {s.city}</p>}
+                          {s.email && <p className="text-xs text-gray-400 mt-0.5">✉️ {s.email}</p>}
+                        </div>
+                        <span className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full">
+                          {s.child_count} trẻ
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => { setShowFindSpecialist(false); navigate('/appointments') }}
+                        className="mt-3 w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs py-2 rounded-lg font-medium transition-colors">
+                        📅 Đặt lịch hẹn với chuyên gia này
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -439,9 +489,7 @@ export default function Dashboard() {
 }
 
 function NavBtn({ onClick, icon, label, color = 'indigo' }) {
-  const cls = color === 'purple'
-    ? 'bg-purple-50 hover:bg-purple-100 text-purple-600'
-    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600'
+  const cls = color === 'purple' ? 'bg-purple-50 hover:bg-purple-100 text-purple-600' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600'
   return <button onClick={onClick} className={`${cls} text-sm px-3 py-2 rounded-lg transition-colors`}>{icon} {label}</button>
 }
 
