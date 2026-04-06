@@ -53,11 +53,13 @@ async def websocket_messages(
 ):
     payload = decode_token(token)
     if not payload or payload.get("type") == "refresh":
+        await websocket.accept()
         await websocket.close(code=4001)
         return
 
     username = payload.get("sub")
     if not username:
+        await websocket.accept()
         await websocket.close(code=4001)
         return
 
