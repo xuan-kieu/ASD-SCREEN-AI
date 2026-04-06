@@ -2,11 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 import api from '../api/axios'
-
-const CITIES = [
-  'Hà Nội', 'TP. Hồ Chí Minh', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng',
-  'Biên Hòa', 'Nha Trang', 'Huế', 'Buôn Ma Thuột', 'Quy Nhơn', 'Khác'
-]
+import { CITIES } from '../constants/cities'
 
 const ROLE_LABEL = {
   admin:      '👑 Quản trị viên',
@@ -19,20 +15,17 @@ export default function Profile() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
 
-  // Đổi mật khẩu
-  const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm_password: '' })
+  const [pwForm, setPwForm]     = useState({ current_password: '', new_password: '', confirm_password: '' })
   const [pwSaving, setPwSaving] = useState(false)
-  const [pwMsg, setPwMsg] = useState(null)
+  const [pwMsg, setPwMsg]       = useState(null)
 
-  // Cập nhật thông tin (city)
-  const [profileForm, setProfileForm] = useState({ city: '' })
+  const [city, setCity]               = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
-  const [profileMsg, setProfileMsg] = useState(null)
+  const [profileMsg, setProfileMsg]   = useState(null)
 
   useEffect(() => {
-    // Load thông tin profile hiện tại
     api.get('/auth/me').then(res => {
-      setProfileForm({ city: res.data.city || '' })
+      setCity(res.data.city || '')
     }).catch(() => {})
   }, [])
 
@@ -46,7 +39,6 @@ export default function Profile() {
       return setPwMsg({ type: 'error', text: 'Mật khẩu xác nhận không khớp' })
     if (pwForm.new_password === pwForm.current_password)
       return setPwMsg({ type: 'error', text: 'Mật khẩu mới phải khác mật khẩu hiện tại' })
-
     setPwSaving(true)
     try {
       await api.post('/auth/change-password', {
@@ -58,34 +50,26 @@ export default function Profile() {
       setTimeout(() => { logout(); navigate('/login') }, 2000)
     } catch (err) {
       setPwMsg({ type: 'error', text: err.response?.data?.detail || 'Đổi mật khẩu thất bại' })
-    } finally {
-      setPwSaving(false)
-    }
+    } finally { setPwSaving(false) }
   }
 
   const handleProfileSave = async () => {
-    setProfileMsg(null)
-    setProfileSaving(true)
+    setProfileMsg(null); setProfileSaving(true)
     try {
-      await api.patch('/auth/update-profile', profileForm)
-      setProfileMsg({ type: 'success', text: 'Cập nhật thông tin thành công!' })
+      await api.patch('/auth/update-profile', { city: city || null })
+      setProfileMsg({ type: 'success', text: 'Cập nhật thành công!' })
     } catch (err) {
       setProfileMsg({ type: 'error', text: err.response?.data?.detail || 'Cập nhật thất bại' })
-    } finally {
-      setProfileSaving(false)
-    }
+    } finally { setProfileSaving(false) }
   }
 
-  const inputCls = "w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-indigo-400"
+  const cls = "w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-indigo-400"
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-lg mx-auto">
-
         <button onClick={() => navigate(-1)}
-          className="text-gray-500 hover:text-gray-700 text-sm mb-6 flex items-center gap-1">
-          ← Quay lại
-        </button>
+          className="text-gray-500 hover:text-gray-700 text-sm mb-6 flex items-center gap-1">← Quay lại</button>
 
         {/* Thông tin tài khoản */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
@@ -99,37 +83,29 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Cập nhật thành phố */}
+        {/* Thành phố */}
         <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
-          <h3 className="text-lg font-bold text-gray-800 mb-1">📍 Thông tin địa điểm</h3>
+          <h3 className="text-lg font-bold text-gray-800 mb-1">📍 Thành phố</h3>
           <p className="text-xs text-gray-400 mb-4">
             {user?.role === 'specialist'
-              ? 'Phụ huynh sẽ tìm thấy bạn khi tìm kiếm theo thành phố'
-              : 'Dùng để gợi ý chuyên gia cùng thành phố'}
+              ? 'Phụ huynh sẽ tìm thấy bạn khi tìm kiếm chuyên gia cùng thành phố'
+              : 'Dùng để gợi ý chuyên gia cùng khu vực với bạn'}
           </p>
 
           {profileMsg && (
-            <div className={`mb-4 px-4 py-3 rounded-xl text-sm ${
-              profileMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-            }`}>
+            <div className={`mb-4 px-4 py-3 rounded-xl text-sm ${profileMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
               {profileMsg.type === 'success' ? '✅' : '❌'} {profileMsg.text}
             </div>
           )}
 
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Thành phố</label>
-              <select value={profileForm.city} onChange={e => setProfileForm(p => ({ ...p, city: e.target.value }))}
-                className={inputCls}>
-                <option value="">-- Chọn thành phố --</option>
-                {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-          </div>
+          <select value={city} onChange={e => setCity(e.target.value)} className={cls}>
+            <option value="">-- Chọn thành phố --</option>
+            {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
 
           <button onClick={handleProfileSave} disabled={profileSaving}
             className="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-medium">
-            {profileSaving ? '⏳ Đang lưu...' : '💾 Lưu thông tin'}
+            {profileSaving ? '⏳ Đang lưu...' : '💾 Lưu thành phố'}
           </button>
         </div>
 
@@ -138,37 +114,29 @@ export default function Profile() {
           <h3 className="text-lg font-bold text-gray-800 mb-5">🔐 Đổi mật khẩu</h3>
 
           {pwMsg && (
-            <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${
-              pwMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
-            }`}>
+            <div className={`mb-4 px-4 py-3 rounded-xl text-sm font-medium ${pwMsg.type === 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
               {pwMsg.type === 'success' ? '✅' : '❌'} {pwMsg.text}
             </div>
           )}
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Mật khẩu hiện tại *</label>
-              <input type="password" value={pwForm.current_password}
-                onChange={e => setPwForm(p => ({ ...p, current_password: e.target.value }))}
-                placeholder="Nhập mật khẩu hiện tại" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Mật khẩu mới *</label>
-              <input type="password" value={pwForm.new_password}
-                onChange={e => setPwForm(p => ({ ...p, new_password: e.target.value }))}
-                placeholder="Ít nhất 8 ký tự" className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Xác nhận mật khẩu mới *</label>
-              <input type="password" value={pwForm.confirm_password}
-                onChange={e => setPwForm(p => ({ ...p, confirm_password: e.target.value }))}
-                placeholder="Nhập lại mật khẩu mới" className={inputCls} />
-              {pwForm.confirm_password && (
-                <p className={`text-xs mt-1 ${pwForm.new_password === pwForm.confirm_password ? 'text-green-600' : 'text-red-500'}`}>
-                  {pwForm.new_password === pwForm.confirm_password ? '✔ Mật khẩu khớp' : '✗ Mật khẩu chưa khớp'}
-                </p>
-              )}
-            </div>
+            {[
+              { key: 'current_password', label: 'Mật khẩu hiện tại *',      ph: 'Nhập mật khẩu hiện tại' },
+              { key: 'new_password',     label: 'Mật khẩu mới *',            ph: 'Ít nhất 8 ký tự' },
+              { key: 'confirm_password', label: 'Xác nhận mật khẩu mới *',  ph: 'Nhập lại mật khẩu mới' },
+            ].map(f => (
+              <div key={f.key}>
+                <label className="block text-xs font-medium text-gray-700 mb-1">{f.label}</label>
+                <input type="password" value={pwForm[f.key]}
+                  onChange={e => setPwForm(p => ({ ...p, [f.key]: e.target.value }))}
+                  placeholder={f.ph} className={cls} />
+                {f.key === 'confirm_password' && pwForm.confirm_password && (
+                  <p className={`text-xs mt-1 ${pwForm.new_password === pwForm.confirm_password ? 'text-green-600' : 'text-red-500'}`}>
+                    {pwForm.new_password === pwForm.confirm_password ? '✔ Mật khẩu khớp' : '✗ Chưa khớp'}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
 
           <button onClick={handlePwSubmit} disabled={pwSaving}
