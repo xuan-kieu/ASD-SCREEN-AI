@@ -1,6 +1,3 @@
-"""
-routers/appointments.py — API đặt lịch hẹn chuyên gia
-"""
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -8,7 +5,7 @@ from app.utils.deps import get_db, get_current_user
 from pydantic import BaseModel
 from typing import Optional, List
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 
 router = APIRouter(tags=["Appointments"])
 
@@ -16,35 +13,31 @@ router = APIRouter(tags=["Appointments"])
 # ── Schemas ────────────────────────────────────────────────────────────────
 
 class SlotCreate(BaseModel):
-    slot_date: str        # 'YYYY-MM-DD'
-    start_time: str       # 'HH:MM'
-    end_time: str         # 'HH:MM'
-    location: Optional[str] = "Online"
-    notes: Optional[str] = None
+    slot_date:  str
+    start_time: str
+    end_time:   str
+    location:   Optional[str] = "Online"
+    notes:      Optional[str] = None
 
 class SlotBulkCreate(BaseModel):
     slots: List[SlotCreate]
 
 class AppointmentCreate(BaseModel):
-    slot_id: str
-    child_id: Optional[str] = None
+    slot_id:       str
+    child_id:      Optional[str] = None
     assessment_id: Optional[str] = None
-    reason: Optional[str] = None
+    reason:        Optional[str] = None
 
 class AppointmentAction(BaseModel):
-    action: str           # 'confirm' | 'reject' | 'complete' | 'cancel'
-    reject_reason: Optional[str] = None
+    action:           str
+    reject_reason:    Optional[str] = None
     specialist_notes: Optional[str] = None
 
 
 # ── Helper ─────────────────────────────────────────────────────────────────
 
-def _notify_telegram(message: str):
-    try:
-        import os
-        print(f"[APPOINTMENT NOTIFY] {message}")
-    except Exception:
-        pass
+def _notify(message: str):
+    print(f"[APPOINTMENT] {message}")
 
 
 # ── SPECIALIST/ADMIN: Quản lý slot ────────────────────────────────────────
@@ -65,22 +58,22 @@ def create_slots(
             INSERT INTO specialist_slots
               (id, specialist_id, slot_date, start_time, end_time, location, notes, is_available)
             VALUES
-              (:id, :specialist_id, :slot_date, :start_time, :end_time, :location, :notes, 1)
+              (:id, :specialist_id, :slot_date, :start_time, :end_time, :location, :notes, true)
         """), {
-            "id": slot_id,
+            "id":            slot_id,
             "specialist_id": str(current_user.id),
-            "slot_date": slot.slot_date,
-            "start_time": slot.start_time,
-            "end_time": slot.end_time,
-            "location": slot.location or "Online",
-            "notes": slot.notes,
+            "slot_date":     slot.slot_date,
+            "start_time":    slot.start_time,
+            "end_time":      slot.end_time,
+            "location":      slot.location or "Online",
+            "notes":         slot.notes,
         })
         created.append(slot_id)
     db.commit()
     return {"created": len(created), "ids": created}
 
 
-@router.delete("/slots/{slot_id}", summary="Chuyên gia xóa slot (nếu chưa ai đặt)")
+@router.delete("/slots/{slot_id}", summary="Xóa slot chưa ai đặt")
 def delete_slot(
     slot_id: str,
     db: Session = Depends(get_db),
@@ -106,19 +99,20 @@ def delete_slot(
     return {"message": "Đã xóa slot"}
 
 
-@router.get("/slots/available", summary="Lấy danh sách slot rảnh của tất cả chuyên gia")
+@router.get("/slots/available", summary="Lấy slot rảnh")
 def get_available_slots(
     specialist_id: Optional[str] = None,
-    from_date: Optional[str] = None,
+    from_date:     Optional[str] = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+    # Fix: is_available = true (PostgreSQL boolean)
     query = """
         SELECT s.id, s.specialist_id, u.full_name AS specialist_name,
                s.slot_date, s.start_time, s.end_time, s.location, s.notes
         FROM specialist_slots s
         JOIN users u ON u.id = s.specialist_id
-        WHERE s.is_available = 1
+        WHERE s.is_available = true
           AND s.slot_date >= CAST(NOW() AS DATE)
     """
     params = {}
@@ -145,19 +139,19 @@ def get_my_slots(
     rows = db.execute(text("""
         SELECT s.id, s.slot_date, s.start_time, s.end_time,
                s.location, s.notes, s.is_available,
-               a.id AS appointment_id,
-               a.status AS appointment_status,
-               u.full_name AS parent_name
+               a.id           AS appointment_id,
+               a.status       AS appointment_status,
+               u.full_name    AS parent_name
         FROM specialist_slots s
         LEFT JOIN appointments a ON a.slot_id = s.id
-        LEFT JOIN users u ON u.id = a.parent_id
+        LEFT JOIN users u        ON u.id = a.parent_id
         WHERE s.specialist_id = :specialist_id
         ORDER BY s.slot_date DESC, s.start_time
     """), {"specialist_id": str(current_user.id)}).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
-# ── ĐẶT LỊCH: Admin, Specialist, Teacher, Parent đều được ─────────────────
+# ── ĐẶT LỊCH ──────────────────────────────────────────────────────────────
 
 @router.post("", summary="Đặt lịch hẹn")
 def create_appointment(
@@ -165,23 +159,20 @@ def create_appointment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    # Tất cả role đều được đặt lịch
     if current_user.role not in ("parent", "teacher", "specialist", "admin"):
         raise HTTPException(403, "Không có quyền đặt lịch")
 
-    # Specialist không được đặt lịch của chính mình
+    # Fix: is_available = true
     slot = db.execute(
-        text("SELECT * FROM specialist_slots WHERE id = :id AND is_available = 1"),
+        text("SELECT * FROM specialist_slots WHERE id = :id AND is_available = true"),
         {"id": data.slot_id}
     ).mappings().fetchone()
     if not slot:
         raise HTTPException(400, "Slot không tồn tại hoặc đã bị đặt")
 
-    if current_user.role == "specialist" and \
-       str(slot["specialist_id"]) == str(current_user.id):
+    if current_user.role == "specialist" and str(slot["specialist_id"]) == str(current_user.id):
         raise HTTPException(400, "Không thể đặt lịch cho slot của chính mình")
 
-    # Kiểm tra chưa đặt slot này rồi
     existing = db.execute(
         text("SELECT id FROM appointments WHERE slot_id = :slot_id AND parent_id = :parent_id"),
         {"slot_id": data.slot_id, "parent_id": str(current_user.id)}
@@ -190,7 +181,7 @@ def create_appointment(
         raise HTTPException(400, "Bạn đã đặt slot này rồi")
 
     appt_id = str(uuid.uuid4())
-    now = datetime.utcnow()
+    now     = datetime.utcnow()
 
     db.execute(text("""
         INSERT INTO appointments
@@ -200,18 +191,19 @@ def create_appointment(
           (:id, :slot_id, :specialist_id, :parent_id, :child_id, :assessment_id,
            'pending', :reason, :now, :now)
     """), {
-        "id": appt_id,
-        "slot_id": data.slot_id,
+        "id":            appt_id,
+        "slot_id":       data.slot_id,
         "specialist_id": str(slot["specialist_id"]),
-        "parent_id": str(current_user.id),
-        "child_id": data.child_id,
+        "parent_id":     str(current_user.id),
+        "child_id":      data.child_id,
         "assessment_id": data.assessment_id,
-        "reason": data.reason,
-        "now": now,
+        "reason":        data.reason,
+        "now":           now,
     })
 
+    # Fix: is_available = false
     db.execute(
-        text("UPDATE specialist_slots SET is_available = 0 WHERE id = :id"),
+        text("UPDATE specialist_slots SET is_available = false WHERE id = :id"),
         {"id": data.slot_id}
     )
     db.commit()
@@ -220,18 +212,18 @@ def create_appointment(
         text("SELECT full_name FROM users WHERE id = :id"),
         {"id": str(slot["specialist_id"])}
     ).mappings().fetchone()
-    _notify_telegram(
+
+    _notify(
         f"📅 Lịch hẹn mới!\n"
         f"Người đặt: {current_user.full_name} ({current_user.role})\n"
         f"Chuyên gia: {specialist['full_name'] if specialist else ''}\n"
-        f"Ngày: {slot['slot_date']} {slot['start_time']}–{slot['end_time']}\n"
-        f"Lý do: {data.reason or 'Không ghi rõ'}"
+        f"Ngày: {slot['slot_date']} {slot['start_time']}–{slot['end_time']}"
     )
 
     return {"id": appt_id, "status": "pending", "message": "Đặt lịch thành công, chờ chuyên gia xác nhận"}
 
 
-# ── XEM LỊCH HẸN: Mỗi role chỉ xem của mình ──────────────────────────────
+# ── XEM LỊCH ──────────────────────────────────────────────────────────────
 
 @router.get("/my", summary="Xem lịch hẹn của tôi")
 def get_my_appointments(
@@ -240,9 +232,7 @@ def get_my_appointments(
     current_user=Depends(get_current_user)
 ):
     role = current_user.role
-    uid = str(current_user.id)
-
-    # Specialist xem theo specialist_id, các role khác xem theo parent_id
+    uid  = str(current_user.id)
     filter_col = "a.specialist_id" if role == "specialist" else "a.parent_id"
 
     query = f"""
@@ -251,13 +241,13 @@ def get_my_appointments(
             a.created_at, a.updated_at,
             s.slot_date, s.start_time, s.end_time, s.location,
             sp.full_name AS specialist_name, sp.id AS specialist_id,
-            p.full_name AS parent_name, p.id AS parent_id,
-            c.full_name AS child_name, c.id AS child_id
+            p.full_name  AS parent_name,     p.id  AS parent_id,
+            c.full_name  AS child_name,      c.id  AS child_id
         FROM appointments a
         JOIN specialist_slots s ON s.id = a.slot_id
-        JOIN users sp ON sp.id = a.specialist_id
-        JOIN users p ON p.id = a.parent_id
-        LEFT JOIN children c ON c.id = a.child_id
+        JOIN users sp           ON sp.id = a.specialist_id
+        JOIN users p            ON p.id  = a.parent_id
+        LEFT JOIN children c    ON c.id  = a.child_id
         WHERE {filter_col} = :uid
     """
     params = {"uid": uid}
@@ -282,13 +272,13 @@ def get_appointment(
             a.created_at, a.updated_at,
             s.slot_date, s.start_time, s.end_time, s.location,
             sp.full_name AS specialist_name, sp.id AS specialist_id,
-            p.full_name AS parent_name, p.id AS parent_id,
-            c.full_name AS child_name
+            p.full_name  AS parent_name,     p.id  AS parent_id,
+            c.full_name  AS child_name
         FROM appointments a
         JOIN specialist_slots s ON s.id = a.slot_id
-        JOIN users sp ON sp.id = a.specialist_id
-        JOIN users p ON p.id = a.parent_id
-        LEFT JOIN children c ON c.id = a.child_id
+        JOIN users sp           ON sp.id = a.specialist_id
+        JOIN users p            ON p.id  = a.parent_id
+        LEFT JOIN children c    ON c.id  = a.child_id
         WHERE a.id = :id
     """), {"id": appt_id}).mappings().fetchone()
 
@@ -304,9 +294,9 @@ def get_appointment(
     return dict(row)
 
 
-# ── SPECIALIST/ADMIN: Duyệt / Từ chối / Hoàn thành ────────────────────────
+# ── ACTION ─────────────────────────────────────────────────────────────────
 
-@router.patch("/{appt_id}/action", summary="Duyệt/từ chối/hoàn thành lịch hẹn")
+@router.patch("/{appt_id}/action", summary="Duyệt/từ chối/hoàn thành/hủy")
 def appointment_action(
     appt_id: str,
     data: AppointmentAction,
@@ -321,7 +311,7 @@ def appointment_action(
     if not appt:
         raise HTTPException(404, "Không tìm thấy cuộc hẹn")
 
-    uid = str(current_user.id)
+    uid  = str(current_user.id)
     role = current_user.role
 
     if role == "specialist" and str(appt["specialist_id"]) != uid:
@@ -337,9 +327,8 @@ def appointment_action(
         "complete": ["confirmed"],
         "cancel":   ["pending", "confirmed"],
     }
-    current_status = appt["status"]
-    if current_status not in valid_transitions.get(data.action, []):
-        raise HTTPException(400, f"Không thể {data.action} khi trạng thái là '{current_status}'")
+    if appt["status"] not in valid_transitions.get(data.action, []):
+        raise HTTPException(400, f"Không thể {data.action} khi trạng thái là '{appt['status']}'")
 
     status_map = {
         "confirm":  "confirmed",
@@ -348,26 +337,25 @@ def appointment_action(
         "cancel":   "cancelled",
     }
     new_status = status_map[data.action]
-    now = datetime.utcnow()
 
     db.execute(text("""
         UPDATE appointments
         SET status = :status,
-            reject_reason = :reject_reason,
+            reject_reason    = :reject_reason,
             specialist_notes = :specialist_notes,
-            updated_at = :now
+            updated_at = NOW()
         WHERE id = :id
     """), {
-        "status": new_status,
-        "reject_reason": data.reject_reason,
+        "status":           new_status,
+        "reject_reason":    data.reject_reason,
         "specialist_notes": data.specialist_notes,
-        "now": now,
-        "id": appt_id,
+        "id":               appt_id,
     })
 
+    # Fix: is_available = true/false
     if data.action in ("reject", "cancel"):
         db.execute(
-            text("UPDATE specialist_slots SET is_available = 1 WHERE id = :id"),
+            text("UPDATE specialist_slots SET is_available = true WHERE id = :id"),
             {"id": str(appt["slot_id"])}
         )
 
@@ -375,9 +363,9 @@ def appointment_action(
     return {"id": appt_id, "status": new_status}
 
 
-# ── ADMIN: Danh sách tất cả ────────────────────────────────────────────────
+# ── ADMIN: Tất cả lịch hẹn ────────────────────────────────────────────────
 
-@router.get("", summary="Admin xem tất cả cuộc hẹn")
+@router.get("", summary="Admin xem tất cả")
 def get_all_appointments(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -391,13 +379,13 @@ def get_all_appointments(
             a.id, a.status, a.reason, a.created_at,
             s.slot_date, s.start_time, s.end_time,
             sp.full_name AS specialist_name,
-            p.full_name AS parent_name,
-            c.full_name AS child_name
+            p.full_name  AS parent_name,
+            c.full_name  AS child_name
         FROM appointments a
         JOIN specialist_slots s ON s.id = a.slot_id
-        JOIN users sp ON sp.id = a.specialist_id
-        JOIN users p ON p.id = a.parent_id
-        LEFT JOIN children c ON c.id = a.child_id
+        JOIN users sp           ON sp.id = a.specialist_id
+        JOIN users p            ON p.id  = a.parent_id
+        LEFT JOIN children c    ON c.id  = a.child_id
     """
     params = {}
     if status:

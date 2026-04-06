@@ -108,15 +108,21 @@ def _send_otp_email(to_email: str, otp: str, full_name: str):
         import smtplib
         from email.mime.text import MIMEText
         from email.mime.multipart import MIMEMultipart
+
         smtp_user = os.getenv("SMTP_USER", "")
         smtp_pass = os.getenv("SMTP_PASS", "")
+        smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.getenv("SMTP_PORT", "465"))
+
         if not smtp_user or not smtp_pass:
-            print(f"[OTP DEV] {to_email}: {otp}")  # Dev mode: print ra log
+            print(f"[OTP DEV] {to_email}: {otp}")
             return True
+
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "Mã xác nhận đặt lại mật khẩu — ASD-SCREEN AI"
         msg["From"]    = smtp_user
         msg["To"]      = to_email
+
         html = f"""
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <h2 style="color:#4f46e5">🧩 ASD-SCREEN AI</h2>
@@ -127,15 +133,20 @@ def _send_otp_email(to_email: str, otp: str, full_name: str):
           </div>
           <p style="color:#6b7280;font-size:14px">Mã có hiệu lực trong <strong>10 phút</strong>.</p>
         </div>"""
+
         msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+
+        # Dùng SMTP_SSL với port 465 (Gmail)
+        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, to_email, msg.as_string())
+
+        print(f"[SMTP] OTP sent to {to_email}")
         return True
+
     except Exception as e:
         print(f"[SMTP] Error: {e}")
         return False
-
 
 # ── Quên mật khẩu — Endpoints ────────────────────────────────────────────────
 
