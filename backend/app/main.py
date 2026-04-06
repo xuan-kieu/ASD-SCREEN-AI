@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, children, assessments, games, reports, messages, admin, mchat, appointments, ws, audio
+from app.config import settings
 
 app = FastAPI(
     title="ASD-SCREEN AI API",
@@ -10,7 +11,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://localhost:8443"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://localhost:8443",
+        settings.FRONTEND_URL,
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
