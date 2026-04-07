@@ -229,3 +229,18 @@ def update_profile(
         current_user.city = req.city
     db.commit()
     return {"message": "Cập nhật thành công"}
+
+@router.get("/test-smtp")
+def test_smtp():
+    import socket
+    results = {}
+    for port in [465, 587, 25]:
+        try:
+            socket.setdefaulttimeout(5)
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect(("smtp.gmail.com", port))
+            s.close()
+            results[port] = "OK"
+        except Exception as e:
+            results[port] = str(e)
+    return results

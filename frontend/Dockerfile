@@ -7,10 +7,16 @@ RUN npm ci
 
 COPY . .
 
-# Build production
+# Khai báo build args
+ARG VITE_API_URL
+ARG VITE_WS_URL
+
+# Truyền vào môi trường lúc build
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+
 RUN npm run build
 
-# ── Serve với Nginx ──────────────────────────────────────
 FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
