@@ -215,3 +215,21 @@ def update_profile(
         current_user.city = req.city
     db.commit()
     return {"message": "Cập nhật thành công"}
+
+@router.get("/test-resend")
+def test_resend():
+    try:
+        import resend, os
+        resend.api_key = os.getenv("RESEND_API_KEY", "")
+        if not resend.api_key:
+            return {"status": "ERROR", "detail": "RESEND_API_KEY trống"}
+        
+        r = resend.Emails.send({
+            "from": "ASD-SCREEN AI <onboarding@resend.dev>",
+            "to": "tranthingocanh166@gmail.com",
+            "subject": "Test Resend",
+            "html": "<p>Test thành công!</p>",
+        })
+        return {"status": "OK", "result": str(r)}
+    except Exception as e:
+        return {"status": "ERROR", "detail": str(e)}
