@@ -105,23 +105,11 @@ def _get_redis():
 
 def _send_otp_email(to_email: str, otp: str, full_name: str):
     try:
-        import smtplib
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-
-        smtp_user = os.getenv("SMTP_USER", "")
-        smtp_pass = os.getenv("SMTP_PASS", "")
-        smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-        smtp_port = int(os.getenv("SMTP_PORT", "465"))
-
-        if not smtp_user or not smtp_pass:
+        import resend, os
+        resend.api_key = os.getenv("RESEND_API_KEY", "")
+        if not resend.api_key:
             print(f"[OTP DEV] {to_email}: {otp}")
             return True
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Mã xác nhận đặt lại mật khẩu — ASD-SCREEN AI"
-        msg["From"]    = smtp_user
-        msg["To"]      = to_email
 
         html = f"""
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
@@ -134,18 +122,16 @@ def _send_otp_email(to_email: str, otp: str, full_name: str):
           <p style="color:#6b7280;font-size:14px">Mã có hiệu lực trong <strong>10 phút</strong>.</p>
         </div>"""
 
-        msg.attach(MIMEText(html, "html"))
-
-        # Dùng SMTP_SSL với port 465 (Gmail)
-        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, to_email, msg.as_string())
-
-        print(f"[SMTP] OTP sent to {to_email}")
+        resend.Emails.send({
+            "from": "ASD-SCREEN AI <onboarding@resend.dev>",
+            "to": to_email,
+            "subject": "Mã xác nhận đặt lại mật khẩu — ASD-SCREEN AI",
+            "html": html,
+        })
+        print(f"[RESEND] OTP sent to {to_email}")
         return True
-
     except Exception as e:
-        print(f"[SMTP] Error: {e}")
+        print(f"[RESEND] Error: {e}")
         return False
 
 # ── Quên mật khẩu — Endpoints ────────────────────────────────────────────────
@@ -229,18 +215,3 @@ def update_profile(
         current_user.city = req.city
     db.commit()
     return {"message": "Cập nhật thành công"}
-
-@router.get("/test-smtp")
-def test_smtp():
-    import socket
-    results = {}
-    for port in [465, 587, 25]:
-        try:
-            socket.setdefaulttimeout(5)
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect(("smtp.gmail.com", port))
-            s.close()
-            results[port] = "OK"
-        except Exception as e:
-            results[port] = str(e)
-    return results
