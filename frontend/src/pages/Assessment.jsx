@@ -46,10 +46,14 @@ const GATEWAY_SEQUENCE = [
   { code: 'GATEWAY_CLAPPING', label: '👏 Vỗ tay vui nhộn',    duration: 120 },
 ]
 
+const MIN_AGE_MONTHS = 12
+const MAX_AGE_MONTHS = 60
+
 function getAgeMonths(birthDate) {
   const today = new Date(), birth = new Date(birthDate)
   return (today.getFullYear() - birth.getFullYear()) * 12 + (today.getMonth() - birth.getMonth())
 }
+
 function getAgeGroup(months) {
   if (months < 18) return '12-18'
   if (months < 24) return '18-24'
@@ -57,7 +61,12 @@ function getAgeGroup(months) {
   return '36-60'
 }
 
-// ── Thêm CONSENT vào đầu luồng ──────────────────────────────
+function validateAge(months) {
+  if (months < MIN_AGE_MONTHS) return `Bé chưa đủ tuổi — hệ thống hỗ trợ từ ${MIN_AGE_MONTHS} tháng tuổi trở lên.`
+  if (months > MAX_AGE_MONTHS) return `Bé đã quá tuổi — hệ thống hỗ trợ tối đa ${MAX_AGE_MONTHS} tháng (5 tuổi).`
+  return null
+}
+
 const PHASE = {
   CONSENT:        'consent',
   SETUP:          'setup',
@@ -73,14 +82,14 @@ export default function Assessment() {
   const navigate  = useNavigate()
   const location  = useLocation()
 
-  // ── Bắt đầu từ CONSENT ──────────────────────────────────────
-  const [phase, setPhase]         = useState(PHASE.CONSENT)
+  const [phase, setPhase]               = useState(PHASE.CONSENT)
   const [consentRecord, setConsentRecord] = useState(null)
 
   const [childName, setChildName] = useState('')
   const [birthDate, setBirthDate] = useState('')
   const [ageMonths, setAgeMonths] = useState(0)
   const [ageGroup, setAgeGroup]   = useState('12-18')
+  const [ageError, setAgeError]   = useState('')
 
   const [gatewayIdx, setGatewayIdx]         = useState(0)
   const [gatewayScores, setGatewayScores]   = useState([])
@@ -128,6 +137,14 @@ export default function Assessment() {
   }, [])
 
   useEffect(() => () => stopTimer(), [])
+
+  // Validate tuổi khi birthDate thay đổi
+  useEffect(() => {
+    if (!birthDate) { setAgeError(''); return }
+    const months = getAgeMonths(birthDate)
+    const err = validateAge(months)
+    setAgeError(err || '')
+  }, [birthDate])
 
   const startTimer = (duration) => {
     setTimeElapsed(0)
@@ -201,10 +218,20 @@ export default function Assessment() {
 
   const handleSetup = () => {
     if (!childName.trim() || !birthDate) return
-    const months = getAgeMonths(birthDate); const group = getAgeGroup(months)
+    const months = getAgeMonths(birthDate)
+    const err = validateAge(months)
+    if (err) { setAgeError(err); return }
+    const group = getAgeGroup(months)
     setAgeMonths(months); setAgeGroup(group); ageGroupRef.current = group
     setPhase(PHASE.DEVICE_CHECK); phaseRef.current = PHASE.DEVICE_CHECK
     setGatewayIdx(0); gatewayIdxRef.current = 0
+  }
+
+  const startMainGame = () => {
+    setGameRunning(true)
+    const config = AGE_GROUP_GAMES[ageGroupRef.current]
+    startTimer(config.duration[gameModeRef.current])
+    startRecording()
   }
 
   const startGateway = () => {
@@ -233,14 +260,12 @@ export default function Assessment() {
   // ─── PHASE: CONSENT ─────────────────────────────────────────
   if (phase === PHASE.CONSENT) return (
     <div style={S.root}>
-      {/* Nền tối phía sau */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ textAlign: 'center', color: '#334155' }}>
           <div style={{ fontSize: 48 }}>🧩</div>
           <p style={{ marginTop: 12 }}>ASD-SCREEN AI</p>
         </div>
       </div>
-      {/* ConsentForm hiện dưới dạng overlay */}
       <ConsentForm
         childName={childName || 'bé'}
         onAccept={(record) => {
@@ -266,7 +291,6 @@ export default function Assessment() {
         <div style={{ fontSize: 48, marginBottom: 16 }}>👶</div>
         <h2 style={{ color: '#e2e8f0', fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Thông tin trẻ</h2>
 
-        {/* Badge đã đồng ý */}
         {consentRecord && (
           <div style={{ background: '#14532d', border: '1px solid #166534', borderRadius: 8, padding: '8px 16px', marginBottom: 16, color: '#4ade80', fontSize: 13 }}>
             ✅ Đã ký đồng ý lúc {new Date(consentRecord.accepted_at).toLocaleTimeString('vi-VN')}
@@ -278,16 +302,29 @@ export default function Assessment() {
           <label style={S.label}>Tên trẻ *</label>
           <input value={childName} onChange={e => setChildName(e.target.value)} placeholder="Ví dụ: Bé Nam" style={S.input} />
         </div>
-        <div style={{ width: '100%', marginBottom: 24 }}>
+
+        <div style={{ width: '100%', marginBottom: 8 }}>
           <label style={S.label}>Ngày sinh *</label>
           <input type="date" value={birthDate} onChange={e => setBirthDate(e.target.value)} style={S.input} />
         </div>
-        {birthDate && (
-          <div style={{ background: '#1e3a5f', borderRadius: 10, padding: '10px 20px', marginBottom: 20, color: '#60a5fa', fontSize: 14 }}>
+
+        {/* Thông báo lỗi tuổi */}
+        {ageError && (
+          <div style={{ background: '#450a0a', border: '1px solid #7f1d1d', borderRadius: 8, padding: '8px 14px', marginBottom: 12, color: '#fca5a5', fontSize: 13, width: '100%', boxSizing: 'border-box' }}>
+            ⚠️ {ageError}
+          </div>
+        )}
+
+        {/* Preview nhóm tuổi nếu hợp lệ */}
+        {birthDate && !ageError && (
+          <div style={{ background: '#1e3a5f', borderRadius: 10, padding: '10px 20px', marginBottom: 20, color: '#60a5fa', fontSize: 14, width: '100%', boxSizing: 'border-box' }}>
             📊 Nhóm tuổi: <strong>{AGE_GROUP_GAMES[getAgeGroup(getAgeMonths(birthDate))]?.label}</strong> ({getAgeMonths(birthDate)} tháng)
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '10px 16px', background: '#1e293b', borderRadius: 10, border: '1px solid #334155' }}>
+
+        {!birthDate && <div style={{ marginBottom: 20 }} />}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '10px 16px', background: '#1e293b', borderRadius: 10, border: '1px solid #334155', width: '100%', boxSizing: 'border-box' }}>
           <span style={{ color: '#94a3b8', fontSize: 13 }}>📷 AI Camera (MediaPipe)</span>
           <button onClick={() => setCameraEnabled(p => !p)}
             style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700,
@@ -295,8 +332,11 @@ export default function Assessment() {
             {cameraEnabled ? 'BẬT' : 'TẮT'}
           </button>
         </div>
-        <button onClick={handleSetup} disabled={!childName.trim() || !birthDate}
-          style={{ ...S.btnGreen, opacity: !childName.trim() || !birthDate ? 0.4 : 1 }}>
+
+        <button
+          onClick={handleSetup}
+          disabled={!childName.trim() || !birthDate || !!ageError}
+          style={{ ...S.btnGreen, opacity: (!childName.trim() || !birthDate || !!ageError) ? 0.4 : 1 }}>
           ▶ Bắt đầu đánh giá
         </button>
       </div>
@@ -524,7 +564,6 @@ export default function Assessment() {
           {gameMode === 'full' ? '📋 Phiếu đầy đủ' : '📄 Phiếu rút gọn'} • {gameSequence.length} game đã hoàn thành
         </p>
 
-        {/* Disclaimer cuối phiên */}
         <div style={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 12, padding: '14px 20px', marginBottom: 24, maxWidth: 480, textAlign: 'left' }}>
           <p style={{ color: '#f59e0b', fontSize: 13, fontWeight: 700, margin: '0 0 6px' }}>⚠️ Lưu ý quan trọng</p>
           <p style={{ color: '#64748b', fontSize: 12, lineHeight: 1.6, margin: 0 }}>

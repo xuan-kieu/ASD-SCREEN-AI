@@ -15,6 +15,8 @@ from app.services.ai.scoring_engine import calculate_developmental_score
 from app.services.report_service import generate_report
 
 router = APIRouter()
+MIN_AGE_MONTHS = 12
+MAX_AGE_MONTHS = 60
 
 
 def assessment_to_dict(a):
@@ -38,6 +40,18 @@ def create_assessment(
     child = db.query(Child).filter(Child.id == data.child_id).first()
     if not child:
         raise HTTPException(status_code=404, detail="Không tìm thấy trẻ")
+    today = date.today()
+    age_months = (today.year - child.birth_date.year) * 12 + (today.month - child.birth_date.month)
+    if age_months < MIN_AGE_MONTHS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Hệ thống chỉ hỗ trợ trẻ từ {MIN_AGE_MONTHS} tháng tuổi trở lên",
+        )
+    if age_months > MAX_AGE_MONTHS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Hệ thống chỉ hỗ trợ trẻ tối đa {MAX_AGE_MONTHS} tháng tuổi",
+        )
 
     new_id = str(uuid.uuid4())
     db.execute(text("""
@@ -143,6 +157,11 @@ def complete_assessment(
     today = date.today()
     age_months = (today.year - child.birth_date.year) * 12 + \
                  (today.month - child.birth_date.month)
+    if age_months < MIN_AGE_MONTHS or age_months > MAX_AGE_MONTHS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Độ tuổi ngoài phạm vi hỗ trợ ({MIN_AGE_MONTHS}-{MAX_AGE_MONTHS} tháng)",
+        )
 
     if game_features:
         scoring_result = calculate_developmental_score(age_months, game_features)

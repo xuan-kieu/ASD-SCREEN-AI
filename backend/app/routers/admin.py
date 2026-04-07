@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 from app.database import get_db
 from app.models.user import User
 from app.models.child import Child
@@ -8,8 +9,10 @@ from app.utils.deps import get_current_user
 from pydantic import BaseModel
 from typing import Optional
 import random, string
+import logging
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 
 def require_admin(current_user: User = Depends(get_current_user)):
@@ -104,20 +107,31 @@ def get_transfer_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    rows = db.execute(text("""
-        SELECT
-            ct.id, ct.transfer_type, ct.reason, ct.transferred_at,
-            fu.full_name AS from_name,
-            tu.full_name AS to_name,
-            bu.full_name AS by_name
-        FROM child_transfers ct
-        LEFT JOIN users fu ON fu.id = ct.from_user_id
-        LEFT JOIN users tu ON tu.id = ct.to_user_id
-        LEFT JOIN users bu ON bu.id = ct.transferred_by
-        WHERE ct.child_id = :child_id
-        ORDER BY ct.transferred_at DESC
-    """), {"child_id": child_id}).mappings().fetchall()
-    return [dict(r) for r in rows]
+    try:
+        rows = db.execute(text("""
+            SELECT
+                ct.id, ct.transfer_type, ct.reason, ct.transferred_at,
+                fu.full_name AS from_name,
+                tu.full_name AS to_name,
+                bu.full_name AS by_name
+            FROM child_transfers ct
+            LEFT JOIN users fu ON fu.id = ct.from_user_id
+            LEFT JOIN users tu ON tu.id = ct.to_user_id
+            LEFT JOIN users bu ON bu.id = ct.transferred_by
+            WHERE ct.child_id = :child_id
+            ORDER BY ct.transferred_at DESC
+        """), {"child_id": child_id}).mappings().fetchall()
+        return [dict(r) for r in rows]
+    except ProgrammingError as e:
+        # Graceful fallback when production DB is missing child_transfers table.
+        if "child_transfers" in str(e).lower() and "does not exist" in str(e).lower():
+            logger.warning(
+                "child_transfers table missing; returning empty transfer history. child_id=%s",
+                child_id,
+            )
+            db.rollback()
+            return []
+        raise
  
 
 # ── Phân công trẻ cho specialist ──────────────────────────────────────────

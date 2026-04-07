@@ -1,14 +1,3 @@
-/**
- * MChatScreen.jsx — M-CHAT-R/F Tiếng Việt
- * © 2009 Diana Robins, Deborah Fein, & Marianne Barton
- * Dịch: CCIHP, hiệu đính: Nguyễn Thị Nhã Trang, 6/2015
- *
- * Props:
- *   childName   — tên trẻ
- *   childId     — id trẻ (để lưu kết quả)
- *   onComplete  — callback(result) khi xong
- *   onClose     — callback khi đóng
- */
 import { useState } from 'react'
 import api from '../api/axios'
 

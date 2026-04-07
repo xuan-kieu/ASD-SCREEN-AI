@@ -15,7 +15,7 @@ COPY . .
 
 RUN echo '#!/bin/bash' > /start.sh && \
     echo 'set -e' >> /start.sh && \
-    echo 'python -c "from app.database import engine, Base; from app.models import user, child, game, assessment, message, report, appointment, mchat; Base.metadata.create_all(bind=engine); print(\"DB tables ready\")"' >> /start.sh && \
+    echo 'python -c "from app.database import engine, Base; from app.models import user, child, child_transfer, game, assessment, message, report, appointment, mchat; Base.metadata.create_all(bind=engine); print(\"DB tables ready\")"' >> /start.sh && \
     echo 'exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}' >> /start.sh && \
     chmod +x /start.sh
 
