@@ -1,16 +1,18 @@
 """
 routers/audio.py — API nhận audio chunk từ frontend và phân tích real-time
 """
+import json
+import logging
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
-import uuid, json
-from datetime import datetime
 from app.database import get_db
 from app.models.user import User
 from app.utils.deps import get_current_user
 from app.services.ai.audio_service import analyze_audio_chunk, aggregate_audio_results
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/audio", tags=["Audio"])
 
@@ -95,8 +97,8 @@ async def finalize_session_audio(
             if existing and existing["raw_features"]:
                 try:
                     features = json.loads(existing["raw_features"])
-                except Exception:
-                    pass
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"[AUDIO] Không parse được raw_features: {e}")
 
             features["audio"] = summary
 
@@ -106,7 +108,8 @@ async def finalize_session_audio(
             )
             db.commit()
     except Exception as e:
-        print(f"[AUDIO] DB save error: {e}")
+        logger.error(f"[AUDIO] DB save error: {e}", exc_info=True)
+        db.rollback()
 
     return {
         "game_session_id": game_session_id,
@@ -136,12 +139,11 @@ async def get_session_summary(
     if row["raw_features"]:
         try:
             features = json.loads(row["raw_features"])
-        except Exception:
-            pass
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"[AUDIO] Không parse được raw_features trong summary: {e}")
 
     audio_summary = features.get("audio")
     if not audio_summary:
         return {"message": "Chưa có dữ liệu audio", "summary": None}
 
     return {"game_session_id": game_session_id, "summary": audio_summary}
-

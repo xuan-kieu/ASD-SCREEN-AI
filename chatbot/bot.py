@@ -25,19 +25,40 @@ user_roles:  dict = {}  # chat_id → role
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def api_get(path, token):
     try:
-        r = requests.get(f"{API_URL}{path}", headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        r = requests.get(
+            f"{API_URL}{path}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10
+        )
         return r.json() if r.ok else None
-    except Exception as e:
-        logger.error(f"GET {path}: {e}")
+    except requests.exceptions.Timeout:
+        logger.warning(f"GET {path}: timeout sau 10 giây")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error(f"GET {path}: không kết nối được đến {API_URL}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"GET {path}: lỗi request — {e}")
         return None
 
 def api_post(path, data, token=None):
     try:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
-        r = requests.post(f"{API_URL}{path}", json=data, headers=headers, timeout=10)
+        r = requests.post(
+            f"{API_URL}{path}",
+            json=data,
+            headers=headers,
+            timeout=10
+        )
         return r.json() if r.ok else None
-    except Exception as e:
-        logger.error(f"POST {path}: {e}")
+    except requests.exceptions.Timeout:
+        logger.warning(f"POST {path}: timeout sau 10 giây")
+        return None
+    except requests.exceptions.ConnectionError:
+        logger.error(f"POST {path}: không kết nối được đến {API_URL}")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"POST {path}: lỗi request — {e}")
         return None
 
 def get_token(chat_id):

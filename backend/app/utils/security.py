@@ -17,7 +17,7 @@ def hash_password(password: str) -> str:
 def verify_password(plain: str, hashed: str) -> bool:
     try:
         return bcrypt.checkpw(plain[:72].encode('utf-8'), hashed.encode('utf-8'))
-    except Exception:
+    except (ValueError, Exception):
         return False
 
 def create_access_token(data: dict) -> str:

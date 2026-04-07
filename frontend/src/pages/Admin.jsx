@@ -101,7 +101,6 @@ export default function Admin() {
 
   const specialists = users.filter(u => u.role === 'specialist' && u.is_active)
 
-  // Sắp xếp specialist cùng khu vực lên đầu
   const getSortedSpecialists = (childRegion) => {
     if (!childRegion) return specialists
     return [...specialists].sort((a, b) => {
@@ -129,6 +128,7 @@ export default function Admin() {
 
   return (
     <div style={S.page}>
+      {/* Header */}
       <div style={S.header}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{ fontSize: 24 }}>🧩</span>
@@ -143,6 +143,7 @@ export default function Admin() {
         </div>
       </div>
 
+      {/* Tabs */}
       <div style={S.tabs}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -154,11 +155,13 @@ export default function Admin() {
         ))}
       </div>
 
+      {/* Content */}
       <div style={{ padding: 32 }}>
         {loading ? (
           <div style={{ textAlign: 'center', color: '#64748b', padding: 60 }}>⏳ Đang tải...</div>
-        ) : tab === 'overview' ? (
 
+        ) : tab === 'overview' ? (
+          /* ── OVERVIEW ── */
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 32 }}>
               {[
@@ -189,7 +192,7 @@ export default function Admin() {
           </div>
 
         ) : tab === 'users' ? (
-
+          /* ── USERS ── */
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>👥 Người dùng ({users.length})</h3>
@@ -223,7 +226,6 @@ export default function Admin() {
                       <label style={{ display: 'block', color: '#94a3b8', fontSize: 13, marginBottom: 5 }}>
                         Thành phố {newUser.role === 'specialist' && <span style={{ color: '#f59e0b' }}>(quan trọng cho chuyên gia)</span>}
                       </label>
-                      {/* Import CITIES từ constants */}
                       <CitySelect value={newUser.city} onChange={v => setNewUser(p => ({ ...p, city: v }))} style={S.select} />
                     </div>
                   </div>
@@ -237,12 +239,12 @@ export default function Admin() {
               </div>
             )}
 
-            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <div style={{ ...S.card, padding: 0, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
                 <thead>
                   <tr style={{ background: '#0f172a' }}>
                     {['Họ và tên', 'Vai trò', 'Email', 'Thành phố', 'Trạng thái', 'Hành động'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155' }}>{h}</th>
+                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -283,7 +285,7 @@ export default function Admin() {
           </div>
 
         ) : (
-
+          /* ── ASSIGN ── */
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>🔗 Phân công trẻ cho chuyên gia</h3>
@@ -359,12 +361,21 @@ export default function Admin() {
               )
             })()}
 
-            <div style={{ ...S.card, padding: 0, overflow: 'hidden' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            {/* Assign Table */}
+            <div style={{ ...S.card, padding: 0, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 620 }}>
+                <colgroup>
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '13%' }} />
+                  <col style={{ width: '28%' }} />
+                  <col style={{ width: '15%' }} />
+                </colgroup>
                 <thead>
                   <tr style={{ background: '#0f172a' }}>
                     {['Tên trẻ', 'Khu vực', 'Phụ huynh', 'Giáo viên', 'Chuyên gia', 'Thao tác'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155' }}>{h}</th>
+                      <th key={h} style={{ padding: '12px 10px', textAlign: 'left', color: '#64748b', fontSize: 12, fontWeight: 600, borderBottom: '1px solid #334155', overflow: 'hidden' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -376,23 +387,29 @@ export default function Admin() {
                     const same = c.specialist_id && isSameCity(specUser?.city, c.region)
                     return (
                       <tr key={c.id} style={{ borderBottom: '1px solid #0f172a', background: i % 2 === 0 ? 'transparent' : '#0f172a' }}>
-                        <td style={{ padding: '12px 16px', fontSize: 14, fontWeight: 600 }}>{c.full_name}</td>
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#fbbf24' }}>{c.region ? `📍 ${c.region}` : <span style={{ color: '#475569' }}>—</span>}</td>
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#94a3b8' }}>{c.parent_name || '—'}</td>
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#94a3b8' }}>{c.teacher_name || '—'}</td>
-                        <td style={{ padding: '12px 16px' }}>
-                          {c.specialist_name ? (
-                            <div>
-                              <span style={{ color: '#0ea5e9', fontSize: 13 }}>🩺 {c.specialist_name}</span>
-                              {same
-                                ? <span style={{ marginLeft: 6, fontSize: 11, background: '#14532d', color: '#22c55e', padding: '1px 6px', borderRadius: 8 }}>✓ Cùng khu vực</span>
-                                : c.region && <span style={{ marginLeft: 6, fontSize: 11, background: '#451a03', color: '#f59e0b', padding: '1px 6px', borderRadius: 8 }}>⚠ Khác khu vực</span>}
-                            </div>
-                          ) : <span style={{ color: '#ef4444', fontSize: 12 }}>⚠️ Chưa phân công</span>}
+                        <td style={{ padding: '10px 10px', fontSize: 14, fontWeight: 600, wordBreak: 'break-word' }}>{c.full_name}</td>
+                        <td style={{ padding: '10px 10px', fontSize: 13, color: '#fbbf24', wordBreak: 'break-word' }}>
+                          {c.region ? `📍 ${c.region}` : <span style={{ color: '#475569' }}>—</span>}
                         </td>
-                        <td style={{ padding: '12px 16px' }}>
-                          <button onClick={() => { setAssignModal({ child: c }); setAssigningId(c.specialist_id || '') }}
-                            style={{ padding: '5px 14px', background: '#1e40af', border: 'none', borderRadius: 6, color: '#93c5fd', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}>
+                        <td style={{ padding: '10px 10px', fontSize: 13, color: '#94a3b8', wordBreak: 'break-word' }}>{c.parent_name || '—'}</td>
+                        <td style={{ padding: '10px 10px', fontSize: 13, color: '#94a3b8', wordBreak: 'break-word' }}>{c.teacher_name || '—'}</td>
+                        <td style={{ padding: '10px 10px' }}>
+                          {c.specialist_name ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                              <span style={{ color: '#0ea5e9', fontSize: 13, wordBreak: 'break-word' }}>🩺 {c.specialist_name}</span>
+                              {same
+                                ? <span style={{ fontSize: 11, background: '#14532d', color: '#22c55e', padding: '2px 7px', borderRadius: 8, whiteSpace: 'nowrap' }}>✓ Cùng khu vực</span>
+                                : c.region && <span style={{ fontSize: 11, background: '#451a03', color: '#f59e0b', padding: '2px 7px', borderRadius: 8, whiteSpace: 'nowrap' }}>⚠ Khác khu vực</span>
+                              }
+                            </div>
+                          ) : (
+                            <span style={{ color: '#ef4444', fontSize: 12 }}>⚠️ Chưa phân công</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 10px' }}>
+                          <button
+                            onClick={() => { setAssignModal({ child: c }); setAssigningId(c.specialist_id || '') }}
+                            style={{ padding: '5px 12px', background: '#1e40af', border: 'none', borderRadius: 6, color: '#93c5fd', fontSize: 12, cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
                             ✏️ Phân công
                           </button>
                         </td>
