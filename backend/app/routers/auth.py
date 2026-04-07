@@ -130,7 +130,7 @@ def _send_otp_email(to_email: str, otp: str, full_name: str):
                 "Content-Type": "application/json",
             },
             json={
-                "sender": {"name": "ASD-SCREEN AI", "email": "a3260d001@smtp-brevo.com"},
+                "sender": {"name": "ASD-SCREEN AI", "email": "ngoxuankieu180@gmail.com"},
                 "to": [{"email": to_email}],
                 "subject": "Mã xác nhận đặt lại mật khẩu — ASD-SCREEN AI",
                 "htmlContent": html,
