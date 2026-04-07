@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import api from '../api/axios'
 
 // ── Dữ liệu 20 câu M-CHAT-R ─────────────────────────────────────────────────
@@ -266,7 +266,7 @@ function getFailedItems(answers) {
 }
 
 // ── PHASE constants ───────────────────────────────────────────────────────────
-const PHASE = { INTRO: 'intro', PART_R: 'part_r', RESULT_R: 'result_r', PART_F: 'part_f', RESULT_F: 'result_f' }
+const PHASE = { INTRO: 'intro', PART_R: 'part_r', RESULT_R: 'result_r', PART_F: 'part_f', RESULT_FINAL: 'result_final' }
 
 export default function MChatScreen({ childName, childId, onComplete, onClose }) {
   const name = childName || 'Con bạn'
@@ -279,6 +279,25 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
   const [fuAnswers, setFuAnswers] = useState({})      // { qId: { subId: bool, ... } }
   const [fuResults, setFuResults] = useState({})     // { qId: 'pass'/'fail' }
   const [saving, setSaving]     = useState(false)
+  const [finalResult, setFinalResult] = useState(null)
+  const [history, setHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  useEffect(() => {
+    if (!childId) return
+    const loadHistory = async () => {
+      setHistoryLoading(true)
+      try {
+        const res = await api.get(`/mchat/results/child/${childId}`)
+        setHistory(Array.isArray(res.data) ? res.data : [])
+      } catch {
+        setHistory([])
+      } finally {
+        setHistoryLoading(false)
+      }
+    }
+    loadHistory()
+  }, [childId])
 
   const q = QUESTIONS[current]
 
@@ -303,17 +322,35 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
   }
 
   // ── Quyết định sau Result R ───────────────────────────────────────────────
-  const handleAfterR = () => {
+  const handleAfterR = async () => {
     if (rScore >= 8) {
       // Nguy cơ cao → kết thúc ngay
-      saveAndFinish('high', rScore, {})
+      const saved = await saveAndFinish('high', rScore, {})
+      if (saved) {
+        setFinalResult({
+          ...saved,
+          final_risk: 'high',
+          followup_fail_count: 0,
+          followup_total: 0,
+        })
+        setPhase(PHASE.RESULT_FINAL)
+      }
     } else if (rScore >= 3) {
       // Trung bình → làm Follow-up với các câu bị fail
       setFuIndex(0)
       setPhase(PHASE.PART_F)
     } else {
       // Thấp
-      saveAndFinish('low', rScore, {})
+      const saved = await saveAndFinish('low', rScore, {})
+      if (saved) {
+        setFinalResult({
+          ...saved,
+          final_risk: 'low',
+          followup_fail_count: 0,
+          followup_total: 0,
+        })
+        setPhase(PHASE.RESULT_FINAL)
+      }
     }
   }
 
@@ -329,7 +366,7 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
     }))
   }
 
-  const handleFuNext = (passOverride) => {
+  const handleFuNext = async (passOverride) => {
     // passOverride: boolean từ nút ĐẠT/KHÔNG ĐẠT của giám sát viên
     const newResults = { ...fuResults, [currentFuId]: passOverride ? 'pass' : 'fail' }
     setFuResults(newResults)
@@ -339,8 +376,16 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
       // Xong Follow-up
       const failCount = Object.values(newResults).filter(r => r === 'fail').length
       const risk = failCount >= 2 ? 'high' : 'low'
-      saveAndFinish(risk, rScore, newResults)
-      setPhase(PHASE.RESULT_F)
+      const saved = await saveAndFinish(risk, rScore, newResults)
+      if (saved) {
+        setFinalResult({
+          ...saved,
+          final_risk: risk,
+          followup_fail_count: failCount,
+          followup_total: failedItems.length,
+        })
+        setPhase(PHASE.RESULT_FINAL)
+      }
     }
   }
 
@@ -359,11 +404,15 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
     }
     try {
       await api.post('/mchat/results', result)
+      if (childId) {
+        const res = await api.get(`/mchat/results/child/${childId}`)
+        setHistory(Array.isArray(res.data) ? res.data : [])
+      }
     } catch (e) {
       // Không có API thì vẫn trả về kết quả cho UI
     }
     setSaving(false)
-    onComplete?.(result)
+    return result
   }
 
   const riskLabel = rScore <= 2 ? { text: 'NGUY CƠ THẤP', color: '#22c55e', bg: '#14532d', border: '#166534' }
@@ -394,6 +443,28 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
         </div>
         <div style={{ background: '#1e293b', borderRadius: 10, padding: '10px 16px', marginBottom: 24, color: '#60a5fa', fontSize: 13 }}>
           👶 Trẻ: <strong>{name}</strong>
+        </div>
+        <div style={{ width: '100%', background: '#1e293b', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+          <div style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Lịch sử M-CHAT-R/F</div>
+          {historyLoading ? (
+            <div style={{ color: '#94a3b8', fontSize: 12 }}>Đang tải lịch sử...</div>
+          ) : history.length === 0 ? (
+            <div style={{ color: '#64748b', fontSize: 12 }}>Chưa có lần test nào trước đó.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 140, overflowY: 'auto' }}>
+              {history.map((h, idx) => (
+                <div key={h.id || idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '6px 10px' }}>
+                  <span style={{ color: '#94a3b8', fontSize: 12 }}>Lần {history.length - idx}</span>
+                  <span style={{ color: h.risk_level === 'high' ? '#ef4444' : '#22c55e', fontWeight: 700, fontSize: 12 }}>
+                    {h.risk_level === 'high' ? 'DƯƠNG TÍNH' : 'ÂM TÍNH'} • R={h.r_score ?? '-'}
+                  </span>
+                  <span style={{ color: '#64748b', fontSize: 11 }}>
+                    {h.created_at ? new Date(h.created_at).toLocaleDateString('vi-VN') : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <button onClick={() => setPhase(PHASE.PART_R)} style={S.btnGreen}>
           ▶ Bắt đầu
@@ -580,9 +651,10 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
   )
 
   // ── KẾT QUẢ CUỐI (sau Follow-up) ───────────────────────────────────────────
-  if (phase === PHASE.RESULT_F) {
-    const failF = Object.values(fuResults).filter(r => r === 'fail').length
-    const finalRisk = failF >= 2 ? 'high' : 'low'
+  if (phase === PHASE.RESULT_FINAL && finalResult) {
+    const failF = finalResult.followup_fail_count || 0
+    const totalF = finalResult.followup_total || 0
+    const finalRisk = finalResult.final_risk
     const finalLabel = finalRisk === 'high'
       ? { text: 'DƯƠNG TÍNH', sub: 'Cần giới thiệu đánh giá chẩn đoán và can thiệp sớm càng sớm càng tốt.', color: '#ef4444', bg: '#450a0a', border: '#7f1d1d' }
       : { text: 'ÂM TÍNH', sub: 'Không cần hành động. Tiếp tục theo dõi trong các lần khám tiếp theo.', color: '#22c55e', bg: '#14532d', border: '#166534' }
@@ -608,7 +680,7 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>Câu Follow-up không đạt</span>
-              <span style={{ color: failF >= 2 ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{failF}/{failedItems.length}</span>
+              <span style={{ color: failF >= 2 ? '#ef4444' : '#22c55e', fontWeight: 700 }}>{failF}/{totalF}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: '#94a3b8', fontSize: 13 }}>Kết luận</span>
@@ -618,7 +690,7 @@ export default function MChatScreen({ childName, childId, onComplete, onClose })
 
           <button onClick={() => onComplete?.({ risk_level: finalRisk, r_score: rScore, followup_fail_count: failF })}
             style={{ ...S.btnBlue, width: '100%' }}>
-            ✅ Xong — Quay về
+            ✅ Xác nhận và đóng
           </button>
         </div>
       </div>
