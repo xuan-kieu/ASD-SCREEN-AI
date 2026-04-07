@@ -105,9 +105,10 @@ def _get_redis():
 
 def _send_otp_email(to_email: str, otp: str, full_name: str):
     try:
-        import resend, os
-        resend.api_key = os.getenv("RESEND_API_KEY", "")
-        if not resend.api_key:
+        import requests, os
+
+        api_key = os.getenv("BREVO_API_KEY", "")
+        if not api_key:
             print(f"[OTP DEV] {to_email}: {otp}")
             return True
 
@@ -122,16 +123,29 @@ def _send_otp_email(to_email: str, otp: str, full_name: str):
           <p style="color:#6b7280;font-size:14px">Mã có hiệu lực trong <strong>10 phút</strong>.</p>
         </div>"""
 
-        resend.Emails.send({
-            "from": "ASD-SCREEN AI <onboarding@resend.dev>",
-            "to": to_email,
-            "subject": "Mã xác nhận đặt lại mật khẩu — ASD-SCREEN AI",
-            "html": html,
-        })
-        print(f"[RESEND] OTP sent to {to_email}")
-        return True
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json={
+                "sender": {"name": "ASD-SCREEN AI", "email": "a3260d001@smtp-brevo.com"},
+                "to": [{"email": to_email}],
+                "subject": "Mã xác nhận đặt lại mật khẩu — ASD-SCREEN AI",
+                "htmlContent": html,
+            }
+        )
+
+        if response.status_code == 201:
+            print(f"[BREVO] OTP sent to {to_email}")
+            return True
+        else:
+            print(f"[BREVO] Error: {response.status_code} - {response.text}")
+            return False
+
     except Exception as e:
-        print(f"[RESEND] Error: {e}")
+        print(f"[BREVO] Error: {e}")
         return False
 
 # ── Quên mật khẩu — Endpoints ────────────────────────────────────────────────
