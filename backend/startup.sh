@@ -7,7 +7,7 @@ echo "=== ASD-SCREEN AI Starting ==="
 echo "Running database migration..."
 python -c "
 from app.database import engine, Base
-from app.models import user, child, child_transfer, game, assessment, message
+from app.models import user, child, child_transfer, game, assessment, assessment_media, message
 from app.models.user import User
 from sqlalchemy import text
 import bcrypt

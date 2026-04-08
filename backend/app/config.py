@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     ENVIRONMENT: str = "development"
     FRONTEND_URL: str = "http://localhost:3000"
+    GEMINI_API_KEY: str = ""
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
+    MEDIA_ROOT: str = "/app/storage"
+    ORIGINAL_MEDIA_DIR: str = "original"
+    ANONYMIZED_MEDIA_DIR: str = "anonymized"
+    ORIGINAL_RETENTION_DAYS: int = 90
 
     class Config:
         env_file = ".env"

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, children, assessments, games, reports, messages, admin, mchat, appointments, ws, audio
+from app.routers import auth, children, assessments, games, reports, messages, admin, mchat, appointments, ws, audio, ai_analysis, media
 from app.config import settings
 
 app = FastAPI(
@@ -32,6 +32,8 @@ app.include_router(mchat.router,        prefix="/api")             # mchat.py c�
 app.include_router(appointments.router, prefix="/api/appointments", tags=["Appointments"])
 app.include_router(ws.router,           prefix="/api")             # ws.py endpoint /ws/messages → /api/ws/messages
 app.include_router(audio.router,        prefix="/api")             # audio.py có prefix="/audio" → /api/audio
+app.include_router(ai_analysis.router,  prefix="/api")             # ai_analysis.py endpoint /ai-analysis → /api/ai-analysis
+app.include_router(media.router,        prefix="/api")             # media.py endpoint /media/... → /api/media/...
 
 @app.get("/")
 def root():

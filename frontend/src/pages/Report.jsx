@@ -2,9 +2,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../api/axios'
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
-const GEMINI_URL     = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`
-
 const DOMAIN_LABELS = {
   social:        { label: 'Kỹ năng xã hội', icon: '👥' },
   communication: { label: 'Giao tiếp',       icon: '💬' },
@@ -19,59 +16,6 @@ const RISK_CONFIG = {
   'RẤT CAO':   { color: '#ef4444', bg: '#450a0a', border: '#7f1d1d', icon: '🚨' },
 }
 
-// ── Gọi Gemini API ────────────────────────────────────────────────────────────
-async function callGemini(prompt) {
-  const res = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { 
-        temperature: 0.7, 
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    })
-  })
-  if (!res.ok) throw new Error(`Gemini API lỗi: ${res.status}`)
-  const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
-}
-
-// ── Tạo prompt từ dữ liệu báo cáo ────────────────────────────────────────────
-function buildPrompt(child, riskLevel, score, domains, concerns, strengths, recs) {
-  const domainText = Object.entries(domains)
-    .map(([k, v]) => `${DOMAIN_LABELS[k]?.label || k}: ${Math.round(v)}/100`)
-    .join(', ')
-
-  const strengthText = strengths.map(s => DOMAIN_LABELS[s]?.label || s).join(', ') || 'Chưa xác định'
-  const concernText  = concerns.map(c => DOMAIN_LABELS[c]?.label || c).join(', ')  || 'Không có'
-
-  return `Bạn là chuyên gia tâm lý nhi khoa và phát triển trẻ em. Hãy phân tích kết quả sàng lọc phát triển sau và đưa ra tư vấn chuyên sâu bằng tiếng Việt.
-
-THÔNG TIN TRẺ:
-- Tên: ${child?.full_name || 'Trẻ'}
-- Tuổi: ${child?.age_months || 'N/A'} tháng
-
-KẾT QUẢ ĐÁNH GIÁ:
-- Mức nguy cơ: ${riskLevel}
-- Điểm tổng hợp: ${score}/100
-- Chi tiết theo lĩnh vực: ${domainText}
-- Điểm mạnh: ${strengthText}
-- Lĩnh vực cần chú ý: ${concernText}
-
-Hãy cung cấp:
-
-1. **NHẬN XÉT TỔNG QUAN** (2-3 câu ngắn gọn về tình trạng phát triển)
-
-2. **PHÂN TÍCH CHI TIẾT** theo từng lĩnh vực có vấn đề (nếu có)
-
-3. **GỢI Ý CAN THIỆP CỤ THỂ** (3-5 hoạt động/bài tập phụ huynh có thể làm tại nhà, phù hợp lứa tuổi ${child?.age_months} tháng)
-
-4. **KHUYẾN NGHỊ CHUYÊN GIA** (khi nào cần đưa trẻ đến chuyên gia, loại chuyên gia nào)
-
-Lưu ý: Trả lời ngắn gọn, thực tế, dễ hiểu cho phụ huynh không có chuyên môn y tế. Không dùng thuật ngữ quá kỹ thuật.`
-}
 
 export default function Report() {
   const { id } = useParams()
@@ -92,10 +36,6 @@ export default function Report() {
   }, [id])
 
   const handleAiAnalysis = useCallback(async () => {
-    if (!GEMINI_API_KEY) {
-      setAiError('Chưa cấu hình VITE_GEMINI_API_KEY trong .env')
-      return
-    }
     setAiLoading(true)
     setAiText('')
     setAiError('')
@@ -108,12 +48,19 @@ export default function Report() {
       const strengths = report?.executive_summary?.strengths || []
       const concerns  = report?.executive_summary?.concerns  || []
       const recs      = report?.recommendations || {}
-      const prompt    = buildPrompt(child, riskLevel, score, domains, concerns, strengths, recs)
-      const text      = await callGemini(prompt)
-      setAiText(text)
+      const res = await api.post('/ai-analysis', {
+        child,
+        risk_level: riskLevel,
+        score,
+        domains,
+        concerns,
+        strengths,
+        recommendations: recs,
+      })
+      setAiText(res.data?.analysis_text || '')
       setAiDone(true)
     } catch (e) {
-      setAiError(`Lỗi: ${e.message}`)
+      setAiError(`Lỗi: ${e?.response?.data?.detail || e.message}`)
     } finally {
       setAiLoading(false)
     }
@@ -386,11 +333,6 @@ export default function Report() {
           {aiError && (
             <div style={{ padding: '12px 16px', background: '#450a0a', borderRadius: 10, border: '1px solid #7f1d1d' }}>
               <p style={{ color: '#f87171', fontSize: 13, margin: 0 }}>❌ {aiError}</p>
-              {aiError.includes('API_KEY') && (
-                <p style={{ color: '#64748b', fontSize: 12, margin: '6px 0 0' }}>
-                  Thêm <code style={{ color: '#fbbf24' }}>VITE_GEMINI_API_KEY=AIza...</code> vào file <code>.env</code> rồi restart frontend.
-                </p>
-              )}
             </div>
           )}
         </div>

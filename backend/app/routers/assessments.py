@@ -13,6 +13,7 @@ from app.utils.security import get_current_user
 from app.models.user import User
 from app.services.ai.scoring_engine import calculate_developmental_score
 from app.services.report_service import generate_report
+from app.tasks.anonymization_tasks import anonymize_assessment_media
 
 router = APIRouter()
 MIN_AGE_MONTHS = 12
@@ -211,9 +212,24 @@ def complete_assessment(
         "ai_training_consent": payload.ai_training_consent,
     })
     db.commit()
+    enqueue_ok = False
+    task_id = None
+    if payload.ai_training_consent is True:
+        try:
+            job = anonymize_assessment_media.delay(
+                assessment_id=assessment_id,
+                child_id=str(assessment.child_id),
+                meta={"trigger": "assessment_complete"},
+            )
+            enqueue_ok = True
+            task_id = job.id
+        except Exception:
+            enqueue_ok = False
 
     return {
         "message":    "Hoàn thành đánh giá",
         "risk_level": risk_level,
         "score":      weighted_score,
+        "anonymization_job_queued": enqueue_ok,
+        "anonymization_task_id": task_id,
     }
