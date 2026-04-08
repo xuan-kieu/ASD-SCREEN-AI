@@ -227,7 +227,7 @@ export default function Assessment() {
     setGatewayIdx(0); gatewayIdxRef.current = 0
   }
 
-  const startMainGame = () => {
+  function startMainGame() {
     setGameRunning(true)
     const config = AGE_GROUP_GAMES[ageGroupRef.current]
     startTimer(config.duration[gameModeRef.current])

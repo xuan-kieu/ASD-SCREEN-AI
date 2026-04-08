@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, DECIMAL, Integer, Text, text
+from sqlalchemy import Column, String, DateTime, DECIMAL, Integer, Text, Boolean, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.database import Base
@@ -17,6 +17,7 @@ class Assessment(Base):
     overall_risk_score = Column(DECIMAL(5, 2))
     risk_level         = Column(String(20))
     report_json        = Column(Text)
+    ai_training_consent = Column(Boolean)
     created_at         = Column(DateTime(timezone=True), server_default=func.now())
     updated_at         = Column(DateTime(timezone=True), server_default=func.now())
 

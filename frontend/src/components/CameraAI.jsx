@@ -76,11 +76,15 @@ export default function CameraAI({ latestAIResult, enabled = true, showPreview =
   const [fps, setFps]         = useState(0)
   const frameCountRef = useRef(0)
   const lastFpsTime   = useRef(Date.now())
+  const mountedRef    = useRef(false)
+  const destroyedRef  = useRef(false)
 
   // Accumulator để tính average
   const accumRef = useRef({ attention: [], smile: [], gazeX: [], gazeY: [], handCount: 0, frames: 0 })
 
   useEffect(() => {
+    mountedRef.current = true
+    destroyedRef.current = false
     if (!enabled) {
       setStatus('disabled')
       // Vẫn ghi data rỗng để game không bị null
@@ -93,12 +97,26 @@ export default function CameraAI({ latestAIResult, enabled = true, showPreview =
       return
     }
     initMediaPipe()
-    return () => cleanup()
+    return () => {
+      mountedRef.current = false
+      cleanup()
+    }
   }, [enabled])
 
   const cleanup = () => {
-    if (cameraRef.current) { cameraRef.current.stop(); cameraRef.current = null }
-    if (faceMeshRef.current) { faceMeshRef.current.close(); faceMeshRef.current = null }
+    destroyedRef.current = true
+    if (cameraRef.current) {
+      try { cameraRef.current.stop() } catch {}
+      cameraRef.current = null
+    }
+    if (faceMeshRef.current) {
+      try { faceMeshRef.current.close() } catch {}
+      faceMeshRef.current = null
+    }
+    if (handsRef.current) {
+      try { handsRef.current.close() } catch {}
+      handsRef.current = null
+    }
   }
 
   const initMediaPipe = async () => {
@@ -141,8 +159,16 @@ export default function CameraAI({ latestAIResult, enabled = true, showPreview =
       // Khởi tạo Camera
       const camera = new window.Camera(videoRef.current, {
         onFrame: async () => {
-          if (faceMeshRef.current) await faceMeshRef.current.send({ image: videoRef.current })
-          if (handsRef.current)    await handsRef.current.send({ image: videoRef.current })
+          if (destroyedRef.current || !mountedRef.current) return
+          const video = videoRef.current
+          if (!video || !video.videoWidth || !video.videoHeight) return
+          try {
+            if (faceMeshRef.current) await faceMeshRef.current.send({ image: video })
+            if (handsRef.current)    await handsRef.current.send({ image: video })
+          } catch {
+            // Swallow frame errors during unmount/transition between phases.
+            return
+          }
 
           // FPS counter
           frameCountRef.current++
@@ -157,10 +183,11 @@ export default function CameraAI({ latestAIResult, enabled = true, showPreview =
       })
       await camera.start()
       cameraRef.current = camera
-      setStatus('ready')
+      if (!destroyedRef.current && mountedRef.current) setStatus('ready')
 
     } catch (err) {
       console.error('MediaPipe init error:', err)
+      if (!mountedRef.current) return
       setError(err.message || 'Không thể khởi động camera')
       setStatus('error')
       // Fallback: ghi data mặc định

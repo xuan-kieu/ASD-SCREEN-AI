@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List
@@ -8,7 +8,7 @@ import json
 from app.database import get_db
 from app.models.assessment import Assessment
 from app.models.child import Child
-from app.schemas import AssessmentCreate, AssessmentResponse
+from app.schemas import AssessmentCreate, AssessmentResponse, AssessmentCompleteRequest
 from app.utils.security import get_current_user
 from app.models.user import User
 from app.services.ai.scoring_engine import calculate_developmental_score
@@ -27,8 +27,20 @@ def assessment_to_dict(a):
         "overall_risk_score": float(a.overall_risk_score) if a.overall_risk_score else None,
         "risk_level": a.risk_level,
         "started_at": a.started_at,
-        "completed_at": a.completed_at
+        "completed_at": a.completed_at,
+        "ai_training_consent": getattr(a, "ai_training_consent", None),
     }
+
+
+def ensure_assessment_consent_column(db: Session):
+    """
+    Lightweight runtime migration for deployments without Alembic.
+    Safe to call multiple times on PostgreSQL.
+    """
+    db.execute(text("""
+        ALTER TABLE assessments
+        ADD COLUMN IF NOT EXISTS ai_training_consent BOOLEAN
+    """))
 
 
 @router.post("/", response_model=AssessmentResponse)
@@ -130,6 +142,7 @@ def save_features(
 @router.patch("/{assessment_id}/complete")
 def complete_assessment(
     assessment_id: str,
+    payload: AssessmentCompleteRequest = Body(default_factory=AssessmentCompleteRequest),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -176,19 +189,22 @@ def complete_assessment(
         weighted_score = None
         report_json    = None
 
+    ensure_assessment_consent_column(db)
     db.execute(text("""
         UPDATE assessments
         SET status             = 'completed',
             completed_at       = NOW(),
             overall_risk_score = :score,
             risk_level         = :risk_level,
-            report_json        = :report_json
+            report_json        = :report_json,
+            ai_training_consent = COALESCE(:ai_training_consent, ai_training_consent)
         WHERE id = :id
     """), {
         "id":          assessment_id,
         "score":       weighted_score,
         "risk_level":  risk_level,
         "report_json": report_json,
+        "ai_training_consent": payload.ai_training_consent,
     })
     db.commit()
 

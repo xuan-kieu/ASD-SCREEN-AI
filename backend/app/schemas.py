@@ -78,6 +78,7 @@ class AssessmentResponse(BaseModel):
     risk_level: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    ai_training_consent: Optional[bool] = None
 
     @field_validator('id', 'child_id', mode='before')
     @classmethod
@@ -86,6 +87,9 @@ class AssessmentResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class AssessmentCompleteRequest(BaseModel):
+    ai_training_consent: Optional[bool] = None
 
 # ── GAMES ─────────────────────────────────────────────────────
 class GameResponse(BaseModel):
