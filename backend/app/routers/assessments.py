@@ -49,6 +49,7 @@ def create_assessment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    ensure_assessment_consent_column(db)
     child = db.query(Child).filter(Child.id == data.child_id).first()
     if not child:
         raise HTTPException(status_code=404, detail="Không tìm thấy trẻ")
@@ -86,6 +87,7 @@ def get_child_assessments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    ensure_assessment_consent_column(db)
     assessments = db.query(Assessment).filter(Assessment.child_id == child_id).all()
     return [assessment_to_dict(a) for a in assessments]
 
@@ -96,6 +98,7 @@ def get_assessment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    ensure_assessment_consent_column(db)
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
     if not assessment:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên đánh giá")
@@ -146,6 +149,7 @@ def complete_assessment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    ensure_assessment_consent_column(db)
     """Hoàn thành assessment + tính điểm từ tất cả game_sessions"""
     assessment = db.query(Assessment).filter(Assessment.id == assessment_id).first()
     if not assessment:
