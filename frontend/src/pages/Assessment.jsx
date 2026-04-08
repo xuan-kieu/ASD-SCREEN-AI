@@ -34,10 +34,30 @@ const gameComponents = {
 }
 
 const AGE_GROUP_GAMES = {
-  '12-18': { label: '12-18 tháng', full: ['G1.1','G1.2','G1.3','G1.4','G1.5'], short: ['G1.1','G1.2','G1.3'], duration: { full: 120, short: 120 } },
-  '18-24': { label: '18-24 tháng', full: ['G2.1','G2.2','G2.3','G2.4','G2.5'], short: ['G2.1','G2.2','G2.3'], duration: { full: 180, short: 180 } },
-  '24-36': { label: '24-36 tháng', full: ['G3.1','G3.2','G3.3','G3.4','G3.5'], short: ['G3.1','G3.2','G3.3'], duration: { full: 180, short: 180 } },
-  '36-60': { label: '36-60 tháng', full: ['G4.1','G4.2','G4.3','G4.4','G4.5'], short: ['G4.1','G4.2','G4.3'], duration: { full: 240, short: 180 } },
+  '12-18': {
+    label: '12-18 tháng',
+    full: ['G1.1', 'G1.2', 'G1.3', 'G1.4', 'G1.5'],
+    short: ['G1.1', 'G1.2', 'G1.3'],
+    durations: { 'G1.1': 120, 'G1.2': 120, 'G1.3': 120, 'G1.4': 120, 'G1.5': 120 },
+  },
+  '18-24': {
+    label: '18-24 tháng',
+    full: ['G2.1', 'G2.2', 'G2.3', 'G2.4', 'G2.5'],
+    short: ['G2.1', 'G2.2', 'G2.3'],
+    durations: { 'G2.1': 180, 'G2.2': 180, 'G2.3': 120, 'G2.4': 180, 'G2.5': 120 },
+  },
+  '24-36': {
+    label: '24-36 tháng',
+    full: ['G3.1', 'G3.2', 'G3.3', 'G3.4', 'G3.5'],
+    short: ['G3.1', 'G3.2', 'G3.3'],
+    durations: { 'G3.1': 180, 'G3.2': 180, 'G3.3': 180, 'G3.4': 180, 'G3.5': 180 },
+  },
+  '36-60': {
+    label: '36-60 tháng',
+    full: ['G4.1', 'G4.2', 'G4.3', 'G4.4', 'G4.5'],
+    short: ['G4.1', 'G4.2', 'G4.3'],
+    durations: { 'G4.1': 240, 'G4.2': 240, 'G4.3': 240, 'G4.4': 180, 'G4.5': 180 },
+  },
 }
 
 const GATEWAY_SEQUENCE = [
@@ -159,6 +179,10 @@ export default function Assessment() {
   }
 
   const stopTimer = () => { if (timerRef.current) clearInterval(timerRef.current) }
+  const getMainGameDuration = useCallback((gameCode) => {
+    const config = AGE_GROUP_GAMES[ageGroupRef.current]
+    return config?.durations?.[gameCode] ?? 120
+  }, [])
 
   const handleFeatureCapture = (feature) => {
     featuresBuffer.current.push(feature)
@@ -206,12 +230,15 @@ export default function Assessment() {
     const idx = gameIdxRef.current; const sequence = gameSequenceRef.current
     await flushFeatures(sequence[idx])
     if (idx < sequence.length - 1) {
-      setGameIdx(idx + 1); gameIdxRef.current = idx + 1; setTimeElapsed(0)
+      const nextIdx = idx + 1
+      const nextCode = sequence[nextIdx]
+      setGameDuration(getMainGameDuration(nextCode))
+      setGameIdx(nextIdx); gameIdxRef.current = nextIdx; setTimeElapsed(0)
     } else {
       try { await api.patch(`/assessments/${assessmentId}/complete`) } catch (e) {}
       setPhase(PHASE.DONE); phaseRef.current = PHASE.DONE
     }
-  }, [assessmentId])
+  }, [assessmentId, getMainGameDuration])
 
   const handleGatewayNext  = handleGatewayNextRef
   const handleMainGameNext = handleMainGameNextRef
@@ -229,8 +256,8 @@ export default function Assessment() {
 
   function startMainGame() {
     setGameRunning(true)
-    const config = AGE_GROUP_GAMES[ageGroupRef.current]
-    startTimer(config.duration[gameModeRef.current])
+    const code = gameSequenceRef.current[gameIdxRef.current]
+    startTimer(getMainGameDuration(code))
     startRecording()
   }
 
@@ -245,9 +272,8 @@ export default function Assessment() {
   const handleStartMainGames = () => {
     const config = AGE_GROUP_GAMES[ageGroupRef.current]
     const sequence = gameModeRef.current === 'full' ? config.full : config.short
-    const duration = config.duration[gameModeRef.current]
     setGameSequence(sequence); gameSequenceRef.current = sequence
-    setGameDuration(duration); setGameIdx(0); gameIdxRef.current = 0
+    setGameDuration(getMainGameDuration(sequence[0])); setGameIdx(0); gameIdxRef.current = 0
     setGameRunning(false); setPhase(PHASE.MAIN_GAMES); phaseRef.current = PHASE.MAIN_GAMES
   }
 
@@ -408,7 +434,9 @@ export default function Assessment() {
           <div style={S.introBox}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>{gatewayIdx === 0 ? '🎈' : gatewayIdx === 1 ? '📢' : '👏'}</div>
             <h3 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{currentGateway?.label}</h3>
-            <p style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>Gateway {gatewayIdx + 1}/3 • {currentGateway?.duration}s</p>
+            <p style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>
+              Gateway {gatewayIdx + 1}/3 • {Math.round((currentGateway?.duration || 0) / 60)} phút ({currentGateway?.duration}s)
+            </p>
             <div style={{ background: '#1e3a5f', borderRadius: 12, padding: '12px 20px', marginBottom: 24, color: '#94a3b8', fontSize: 13, maxWidth: 360, textAlign: 'center' }}>
               {gatewayIdx === 0 && '🎈 Cho trẻ xem bong bóng bay. Quan sát trẻ có nhìn theo và với tay không.'}
               {gatewayIdx === 1 && '📢 Gọi tên trẻ 3 lần. Quan sát trẻ có quay đầu lại và phản hồi không.'}
@@ -532,7 +560,9 @@ export default function Assessment() {
             <div style={{ fontSize: 64, marginBottom: 12 }}>🎮</div>
             <h3 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{currentGameCode}</h3>
             <p style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>Game {gameIdx + 1}/{gameSequence.length}</p>
-            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>⏱ {gameDuration}s • Nhóm {AGE_GROUP_GAMES[ageGroup]?.label}</p>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>
+              ⏱ {Math.round(gameDuration / 60)} phút ({gameDuration}s) • Nhóm {AGE_GROUP_GAMES[ageGroup]?.label}
+            </p>
             {cameraEnabled && (
               <div style={{ background: '#0f2a1a', border: '1px solid #166534', borderRadius: 8, padding: '6px 14px', marginBottom: 16, color: '#4ade80', fontSize: 12 }}>
                 🤖 AI đang theo dõi
