@@ -1,66 +1,41 @@
-@"
-# Python
+## Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
+*.py[cod]
 *.egg-info/
 .venv/
 venv/
 
-# Node
+## Node
 node_modules/
 dist/
 build/
 .npm/
 
-# Môi trường
+## Environment files (do not commit secrets)
 .env
 *.env
 .env.*
 !.env.example
-backend/.env
-chatbot/.env
-frontend/.env
-frontend/.env.production
-frontend/.env.local
-.env.production
 
-# Docker volumes
-media/
-backend/media/
-logs/
+## Logs / caches
+*.log
 
-# IDE
+## IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# SSL certificates
+## OS
+.DS_Store
+Thumbs.db
+
+## SSL certificates
 nginx/ssl/
 *.pem
 *.key
 *.crt
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Cache
-*.log
-"@ | Set-Content "Y:\ASD-SCREEN-AI\.gitignore" -Encoding UTF8
-# Cache
-**/__pycache__/
-**/*.pyc
-
-# Env
-.env.production
-
-# SSL t? k�
-nginx/ssl/
-
-# Media uploads
+## Media/uploads (keep gitkeep if used)
 backend/media/*
 !backend/media/.gitkeep

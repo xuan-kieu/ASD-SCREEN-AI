@@ -1,21 +1,18 @@
-@"
-# Dependencies
+## Dependencies
 node_modules/
 
-# Build output
+## Build output
 dist/
 build/
 
-# Environment variables — KHÔNG push lên git
+## Environment variables (do not commit secrets)
 .env
-.env.local
-.env.development
-.env.production
+.env.*
+!.env.example
 
-# Logs
+## Logs
 *.log
 
-# Editor
+## Editor
 .vscode/
 .idea/
-"@ | Set-Content "Y:\ASD-SCREEN-AI\frontend\.gitignore"
