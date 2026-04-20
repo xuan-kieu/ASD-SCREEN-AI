@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.database import get_db
 from app.models import User
-from app.utils.security import get_current_user
+from app.utils.deps import get_current_user
 
 # Bỏ prefix ở đây vì main.py đã thêm prefix="/api/reports"
 router = APIRouter(tags=["reports"])

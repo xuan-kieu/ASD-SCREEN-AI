@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models.assessment import Assessment
 from app.models.child import Child
 from app.schemas import AssessmentCreate, AssessmentResponse, AssessmentCompleteRequest
-from app.utils.security import get_current_user
+from app.utils.deps import get_current_user
 from app.models.user import User
 from app.services.ai.scoring_engine import calculate_developmental_score
 from app.services.report_service import generate_report

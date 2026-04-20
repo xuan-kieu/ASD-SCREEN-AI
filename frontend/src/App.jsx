@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import useAuthStore from './store/authStore'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -18,9 +19,31 @@ function PrivateRoute({ children }) {
   return token ? children : <Navigate to="/login" replace />
 }
 
+function AuthEventBridge() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { logout } = useAuthStore()
+
+  useEffect(() => {
+    const onAuthLogout = () => {
+      logout()
+      if (location.pathname !== '/login') {
+        navigate('/login', { replace: true })
+      }
+    }
+
+    window.addEventListener('auth:logout', onAuthLogout)
+    return () => window.removeEventListener('auth:logout', onAuthLogout)
+  }, [logout, navigate, location.pathname])
+
+  return null
+}
+
 export default function App() {
+  const { token } = useAuthStore()
   return (
     <BrowserRouter>
+      <AuthEventBridge />
       <Routes>
         <Route path="/login"           element={<Login />} />
         <Route path="/register"        element={<Register />} />
@@ -34,7 +57,7 @@ export default function App() {
         <Route path="/admin"          element={<PrivateRoute><Admin /></PrivateRoute>} />
         <Route path="/appointments"   element={<PrivateRoute><Appointments /></PrivateRoute>} />
         <Route path="/profile"        element={<PrivateRoute><Profile /></PrivateRoute>} />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to={token ? "/dashboard" : "/login"} replace />} />
       </Routes>
     </BrowserRouter>
   )

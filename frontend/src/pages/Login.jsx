@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import useAuthStore from '../store/authStore'
 
@@ -6,8 +6,16 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword]       = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [sessionNotice, setSessionNotice] = useState('')
   const { login, loading, error } = useAuthStore()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const reason = sessionStorage.getItem('auth_logout_reason')
+    if (!reason) return
+    sessionStorage.removeItem('auth_logout_reason')
+    setSessionNotice('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -28,6 +36,12 @@ export default function Login() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
+          {sessionNotice && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-3 rounded-xl">
+              ⏰ {sessionNotice}
+            </div>
+          )}
+
           <div>
             <label>Email</label>
               <input

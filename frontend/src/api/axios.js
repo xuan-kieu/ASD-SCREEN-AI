@@ -15,6 +15,7 @@ api.interceptors.request.use(config => {
 // ── Response: tự động refresh khi 401 ────────────────────────────────────────
 let isRefreshing  = false
 let failedQueue   = []  // Hàng đợi các request bị lỗi 401
+let redirectingToLogin = false
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(({ resolve, reject }) => {
@@ -24,15 +25,27 @@ const processQueue = (error, token = null) => {
   failedQueue = []
 }
 
+const isAuthEndpoint = (url = '') => url.includes('/auth/')
+
+const emitAuthLogout = (reason = 'token_expired') => {
+  if (redirectingToLogin) return
+  redirectingToLogin = true
+  clearAuth()
+  sessionStorage.setItem('auth_logout_reason', reason)
+  window.dispatchEvent(new CustomEvent('auth:logout', { detail: { reason } }))
+}
+
 api.interceptors.response.use(
-  res => res,
+  res => {
+    redirectingToLogin = false
+    return res
+  },
   async err => {
     const originalRequest = err.config
 
-    // Chỉ xử lý lỗi 401, không retry endpoint /auth/refresh (tránh vòng lặp)
+    // Chỉ refresh cho endpoint protected (không áp dụng cho /auth/*)
     if (err.response?.status === 401 && !originalRequest._retry
-        && !originalRequest.url?.includes('/auth/refresh')
-        && !originalRequest.url?.includes('/auth/login')) {
+        && !isAuthEndpoint(originalRequest.url)) {
 
       // Nếu đang refresh rồi → cho vào hàng đợi
       if (isRefreshing) {
@@ -52,8 +65,7 @@ api.interceptors.response.use(
       if (!refreshToken) {
         // Không có refresh token → logout
         isRefreshing = false
-        clearAuth()
-        window.location.href = '/login'
+        emitAuthLogout('missing_refresh_token')
         return Promise.reject(err)
       }
 
@@ -77,8 +89,7 @@ api.interceptors.response.use(
       } catch (refreshErr) {
         // Refresh thất bại → logout
         processQueue(refreshErr, null)
-        clearAuth()
-        window.location.href = '/login'
+        emitAuthLogout('refresh_failed')
         return Promise.reject(refreshErr)
       } finally {
         isRefreshing = false
