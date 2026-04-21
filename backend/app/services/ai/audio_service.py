@@ -21,7 +21,7 @@ except ImportError:
 # ── Constants ──────────────────────────────────────────────────────────────
 
 SAMPLE_RATE       = 22050
-SILENCE_THRESHOLD = 0.01   # RMS energy dưới ngưỡng này = im lặng
+SILENCE_THRESHOLD = 0.006  # RMS energy dưới ngưỡng này = im lặng
 MIN_VOICE_RATIO   = 0.15   # Tỷ lệ tối thiểu có tiếng để tính là "có phản hồi"
 
 
@@ -46,14 +46,14 @@ def analyze_audio_chunk(audio_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> d
         }
     """
     if not LIBROSA_OK:
-        return _fallback_analysis()
+        return _fallback_analysis(status="fallback")
 
     try:
         # Load audio từ bytes
         y, sr = librosa.load(io.BytesIO(audio_bytes), sr=sample_rate, mono=True)
 
         if len(y) < sr * 0.5:  # Quá ngắn (< 0.5s)
-            return _fallback_analysis()
+            return _fallback_analysis(status="too_short")
 
         duration = len(y) / sr
 
@@ -110,6 +110,7 @@ def analyze_audio_chunk(audio_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> d
         )
 
         return {
+            "analysis_status":     "ok",
             "has_voice":           has_voice,
             "voice_ratio":         round(voice_ratio, 3),
             "emotion":             emotion,
@@ -132,7 +133,7 @@ def analyze_audio_chunk(audio_bytes: bytes, sample_rate: int = SAMPLE_RATE) -> d
 
     except Exception as e:
         print(f"[AUDIO] Analysis error: {e}")
-        return _fallback_analysis()
+        return _fallback_analysis(status="fallback")
 
 
 # ── Emotion Classification ─────────────────────────────────────────────────
@@ -264,8 +265,9 @@ def _assess_language_development(
 
 # ── Fallback khi không có librosa ─────────────────────────────────────────
 
-def _fallback_analysis() -> dict:
+def _fallback_analysis(status: str = "fallback") -> dict:
     return {
+        "analysis_status":    status,
         "has_voice":          False,
         "voice_ratio":        0.0,
         "emotion":            "neutral",
@@ -287,11 +289,11 @@ def aggregate_audio_results(results: list[dict]) -> dict:
     Tổng hợp kết quả từ nhiều chunk audio trong 1 game session
     """
     if not results:
-        return _fallback_analysis()
+        return _fallback_analysis(status="fallback")
 
     valid = [r for r in results if r.get("has_voice") is not None]
     if not valid:
-        return _fallback_analysis()
+        return _fallback_analysis(status="fallback")
 
     # Tỷ lệ có tiếng trung bình
     voice_ratio_avg = np.mean([r["voice_ratio"] for r in valid])
@@ -319,6 +321,7 @@ def aggregate_audio_results(results: list[dict]) -> dict:
     pitch_avg = float(np.mean(pitches)) if pitches else 0.0
 
     return {
+        "analysis_status":    "ok",
         "has_voice":          has_voice,
         "voice_ratio":        round(float(voice_ratio_avg), 3),
         "emotion":            dominant_emotion,

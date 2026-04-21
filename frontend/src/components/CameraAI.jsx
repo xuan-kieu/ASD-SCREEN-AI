@@ -55,13 +55,21 @@ function estimateSmile(landmarks) {
   return Math.min(1, mouthWidth / 0.3) * (1 - Math.min(1, mouthHeight / 0.05))
 }
 
-// ── Tính attention level từ head pose ───────────────────
+// ── Tính attention level từ head pose và gaze ─────────────
 function estimateAttention(landmarks) {
   if (!landmarks || landmarks.length < 10) return 0.5
+  
+  // Head score
   const nose = landmarks[NOSE_TIP]
-  // Mũi ở giữa màn hình → đang nhìn thẳng
   const centerDist = Math.sqrt(Math.pow(nose.x - 0.5, 2) + Math.pow(nose.y - 0.5, 2))
-  return Math.max(0, 1 - centerDist * 2)
+  const headScore = Math.max(0, 1 - centerDist * 2)
+  
+  // Gaze score
+  const gaze = estimateGaze(landmarks)
+  const gazeDist = Math.sqrt(Math.pow(gaze.gazeX - 0.5, 2) + Math.pow(gaze.gazeY - 0.5, 2))
+  const gazeScore = Math.max(0, 1 - gazeDist * 2)
+  
+  return 0.5 * headScore + 0.5 * gazeScore
 }
 
 export default function CameraAI({ latestAIResult, enabled = true, showPreview = true }) {

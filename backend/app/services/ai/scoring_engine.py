@@ -237,6 +237,8 @@ def calculate_developmental_score(
         for d, scores in domain_scores.items()
     }
 
+    missing_domain_data = [d for d, scores in domain_scores.items() if not scores]
+
     # Điểm tổng hợp — chỉ dùng domain active (trọng số đã tổng = 1.0)
     weighted_score = round(sum(domain_avg[d] * weights[d] for d in active_domains), 1)
     risk_level     = get_risk_level(weighted_score)
@@ -256,6 +258,8 @@ def calculate_developmental_score(
     overall_percentile = zscore_to_percentile(weighted_z)
 
     return {
+        'norms_disclaimer':    'Chuẩn tham khảo — chưa validate lâm sàng',
+        'missing_domain_data': missing_domain_data,
         'age_months':          age_months,
         'age_group':           age_group,
         'active_domains':      list(active_domains),
