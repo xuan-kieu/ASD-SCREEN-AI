@@ -63,7 +63,7 @@ async def websocket_messages(
 
     await manager.connect(username, websocket)
 
-    # Gửi ping mỗi 20 giây để giữ kết nối qua Railway proxy
+    # Gửi ping mỗi 20 giây để giữ kết nối qua proxy
     async def ping_loop():
         while True:
             await asyncio.sleep(20)

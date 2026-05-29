@@ -27,5 +27,5 @@ celery_app.conf.update(
     },
 )
 
-# Explicit import keeps task registration predictable on Railway worker.
+# Explicit import keeps task registration predictable on the worker.
 celery_app.autodiscover_tasks(["app.tasks"])

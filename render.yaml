@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: asd-backend
+    env: docker
+    dockerContext: .
+    dockerfilePath: backend/Dockerfile
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: asd-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: asd-redis
+          property: connectionString
+          
+  - type: worker
+    name: asd-celery-worker
+    env: docker
+    dockerContext: .
+    dockerfilePath: backend/Dockerfile
+    dockerCommand: celery -A app.tasks.celery_app worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: asd-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: asd-redis
+          property: connectionString
+
+  - type: redis
+    name: asd-redis
+    ipAllowList: []
+
+databases:
+  - name: asd-postgres
+    databaseName: asd_db
+    user: asd_user

@@ -48,12 +48,12 @@ export default function Messages() {
   const connectWS = useCallback(() => {
     if (!token || !mountedRef.current) return
 
-    // Fix URL cho Railway: luôn dùng wss:// khi trang dùng https://
+    // Fix URL cho production: luôn dùng wss:// khi trang dùng https://
     const backendUrl = import.meta.env.VITE_API_URL || ''
     let wsBase = import.meta.env.VITE_WS_URL || ''
 
     if (!wsBase) {
-      // Tự tính từ VITE_API_URL: https://xxx.railway.app/api → wss://xxx.railway.app
+      // Tự tính từ VITE_API_URL: https://xxx.onrender.com/api → wss://xxx.onrender.com
       if (backendUrl.startsWith('https://')) {
         wsBase = backendUrl.replace('https://', 'wss://').replace('/api', '')
       } else if (backendUrl.startsWith('http://')) {
